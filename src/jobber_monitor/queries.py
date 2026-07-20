@@ -77,7 +77,15 @@ query QuotesPage($first: Int!, $after: String) {
 """
 
 # Everything about one client in a single call: identity/contact info,
-# tags, notes (ClientNote.message is the actual note text), properties,
+# tags, notes (ClientNote.message is the actual note text -- legacy/rarely
+# used at WeSpeakWiFi now; per-property custom fields below are the real
+# current source for network info), properties (with their custom fields
+# -- e.g. "Network Name", "Equipment", "Eero Network I.D.", "ISP Account
+# Number" -- confirmed live against a real property, values are a union
+# of concrete types keyed off __typename; only CustomFieldText and
+# CustomFieldDropdown are handled below since those are the only two
+# actually in use on the account checked so far -- add more `... on
+# CustomFieldX` fragments here if another type shows up in the field list),
 # jobs, quotes, invoices, and requests. Deliberately excludes `messages`
 # (see module docstring -- it's real but content-less) and doesn't attempt
 # a client-wide task rollup (no clientId filter exists on tasks; use
@@ -114,6 +122,11 @@ query ClientDashboard($id: EncodedId!) {
         name
         jobberWebUri
         address { street city province postalCode }
+        customFields {
+          __typename
+          ... on CustomFieldText { label valueText }
+          ... on CustomFieldDropdown { label valueDropdown }
+        }
       }
     }
     jobs(first: 10) {
