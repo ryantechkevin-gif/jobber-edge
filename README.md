@@ -114,26 +114,54 @@ can't complete the initial authorization on its own.
 ## Deploying
 
 The `jobber-edge` Function App (West US 2, Python 3.11, Flex Consumption)
-exists and its Deployment Center is connected to this repo's `main`
-branch (`.github/workflows/main_jobber-edge.yml`, Portal-generated).
+is deployed via GitHub Actions (`.github/workflows/main_jobber-edge.yml`)
+on every push to `main`, using OIDC login (`azure/login@v2`) against a
+manually created Entra ID App Registration (`jobber-edge-github-deploy`)
+-- **not** Deployment Center's automatic identity provisioning, which
+failed silently across two separate connection attempts.
 
-Remaining steps:
+### Getting here took a few wrong turns -- worth knowing if this ever needs redoing
 
-1. In its **Configuration**, set the App Settings listed above
-   (`JOBBER_CLIENT_ID`, `JOBBER_CLIENT_SECRET`, `JOBBER_REDIRECT_URI` --
-   see the confirmed callback URL above -- `TEAMS_WEBHOOK_URL`,
+1. **Deployment Center's auto-provisioned OIDC identity never actually
+   existed.** Both times Deployment Center connected this repo, it wrote
+   GitHub secrets referencing an Entra ID App Registration client ID that
+   was never actually created (`AADSTS700213: No matching federated
+   identity record found`, and the App Registration was confirmed absent
+   from Entra ID entirely). Root cause not confirmed, but consistent with
+   a tenant policy restricting non-admin creation of App Registrations.
+2. **Publish Profile deployment is a dead end on Flex Consumption.**
+   Tried as a workaround for (1) -- fails unconditionally with `Failed to
+   fetch Kudu App Settings. Unauthorized (CODE: 401)`, regardless of the
+   "SCM Basic Auth Publishing Credentials" setting, a fresh publish
+   profile, or a restart. Confirmed via Microsoft Q&A and
+   `Azure/functions-action` GitHub issues: Flex Consumption doesn't
+   expose the classic Kudu/SCM site at all, so this method can never
+   work on this plan -- OIDC is the only supported path.
+3. **A manually created App Registration's federated credential still
+   didn't match**, even with the Organization/Repository fields filled in
+   correctly (`ryantechkevin-gif` / `jobber-edge`). The Azure Portal's
+   newer "Add a credential" form also requires the **numeric** GitHub
+   Organization ID and Repository ID (`246170464` and `1306842453`
+   respectively -- from the GitHub API, matching exactly what showed up
+   in every failed login's subject claim: `repo:ryantechkevin-gif@246170464/
+   jobber-edge@1306842453:ref:refs/heads/main`). Entering only the names
+   left the subject identifier unresolved/wrong.
+4. **`AZURE_SUBSCRIPTION_ID` also needs to be the actual subscription ID
+   the `jobber-edge` Function App lives in** -- login succeeds with a
+   valid identity/credential but a wrong subscription ID separately fails
+   with `The subscription of '***' doesn't exist in cloud 'AzureCloud'`.
+
+The working GitHub secrets are generic names, not GUID-suffixed ones:
+`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` -- so if the
+App Registration or federated credential ever needs recreating, only
+these secret values change, not the workflow file.
+
+### Remaining app-level setup
+
+1. In the Function App's **Configuration**, set the App Settings listed
+   above (`JOBBER_CLIENT_ID`, `JOBBER_CLIENT_SECRET`, `JOBBER_REDIRECT_URI`
+   -- see the confirmed callback URL above -- `TEAMS_WEBHOOK_URL`,
    `PYTHONPATH=src`, etc).
 2. Confirm the same URL is registered as this app's redirect URI in
    Jobber's Developer Center.
 3. Run the one-time `/api/jobber/authorize` step above.
-
-Note: the first automated deploy (triggered when Deployment Center added
-the workflow file) failed with an Azure AD OIDC error --
-`AADSTS700213: No matching federated identity record found` -- which
-means the federated credential Entra ID needs for this exact repo/branch
-either hadn't propagated yet or wasn't created correctly. This is
-independent of the app code; if it recurs after a few minutes, check the
-Function App's associated Entra ID app registration under **Certificates
-& secrets > Federated credentials** for an entry matching organization
-`ryantechkevin-gif`, repository `jobber-edge`, entity type `Branch`,
-branch `main`.
