@@ -75,12 +75,19 @@ jobs:
           unzip release.zip
           rm release.zip
         
+      # Generic secret names (not tied to an auto-generated GUID) --
+      # manually created App Registration + federated credential in Entra
+      # ID, since Deployment Center's automatic provisioning silently
+      # failed twice in a row (AADSTS700213, App Registration never
+      # actually existed for either client ID it generated). If this ever
+      # needs recreating, only these secret values change, not the
+      # workflow file.
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_3F1C681EEE3649208CD8032874E9279A }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6023651D16A445EDB4C7867A5D1DD073 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_CCFEC7E406DD4952813335BAE852C90F }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: 'Deploy to Azure Functions'
         uses: Azure/functions-action@v1
