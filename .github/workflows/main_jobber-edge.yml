@@ -29,26 +29,33 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Create and start virtual environment
-        run: |
-          python -m venv venv
-          source venv/bin/activate
-
+      # Installed directly into .python_packages/lib/site-packages -- the
+      # exact path the Azure Functions Python worker puts on sys.path -- so
+      # dependencies are present in the deployed zip itself, rather than
+      # relying on a remote build step to install them server-side. A venv
+      # here doesn't help: each `run:` step is a fresh shell, so activating
+      # one in a prior step has no effect on this one anyway. (Portal's
+      # default template creates a venv, installs into it, then excludes
+      # venv/ from the zip -- shipping zero dependencies. Same fix already
+      # applied in unifi-edge/starlink-edge's workflows -- gets reverted by
+      # Azure every time Deployment Center reconnects, so re-apply this if
+      # that happens again.)
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install --target=".python_packages/lib/site-packages" -r requirements.txt
 
       # Optional: Add step to run tests here
 
+      # `./*` is a shell glob and does NOT match dotfiles/dot-directories,
+      # so .python_packages would be silently excluded from the archive if
+      # not listed explicitly.
       - name: Zip artifact for deployment
-        run: zip release.zip ./* -r
+        run: zip release.zip ./* .python_packages -r
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: python-app
-          path: |
-            release.zip
-            !venv/
+          path: release.zip
 
   deploy:
     runs-on: ubuntu-latest
