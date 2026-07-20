@@ -69,14 +69,22 @@ query QuotesPage($first: Int!, $after: String) {
 }
 """
 
-# Ad-hoc schema exploration -- see the /api/jobber/schema route.
+# Ad-hoc schema exploration -- see the /api/jobber/schema route. Includes
+# field arguments (needed to actually call anything -- e.g. pagination
+# params, filters) and unwraps NON_NULL/LIST wrapper types three levels
+# deep, which covers shapes like `[ClientEdge!]!`.
 INTROSPECT_TYPE_QUERY = """
 query IntrospectType($name: String!) {
   __type(name: $name) {
     name
+    kind
     fields {
       name
-      type { name kind ofType { name kind } }
+      args {
+        name
+        type { name kind ofType { name kind ofType { name kind } } }
+      }
+      type { name kind ofType { name kind ofType { name kind } } }
     }
   }
 }
