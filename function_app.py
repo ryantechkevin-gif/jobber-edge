@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -75,6 +76,38 @@ def jobber_schema(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse("Missing required query param: type (e.g. ?type=Job)", status_code=400)
     try:
         data = execute(INTROSPECT_TYPE_QUERY, {"name": type_name})
+    except RuntimeError as exc:
+        return func.HttpResponse(str(exc), status_code=400)
+    return func.HttpResponse(str(data), mimetype="application/json; charset=utf-8")
+
+
+# Ad-hoc GraphQL console: GET /api/jobber/query?q=<url-encoded query>
+# [&vars=<url-encoded JSON>] runs ANY query or mutation against the live
+# account and returns the raw result -- built for schema exploration during
+# development (testing introspection variants like includeDeprecated,
+# trying real data queries before committing them to queries.py) without a
+# redeploy per question.
+#
+# SECURITY NOTE: this runs arbitrary mutations too, not just queries --
+# equivalent in power to holding the OAuth token directly. Gated behind the
+# function key like everything else here, but worth removing or locking
+# down further once initial development against the live schema is done.
+@app.route(route="jobber/query", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
+def jobber_query_http(req: func.HttpRequest) -> func.HttpResponse:
+    query = req.params.get("q")
+    if not query:
+        return func.HttpResponse("Missing required query param: q (a GraphQL query/mutation string)", status_code=400)
+
+    variables = None
+    vars_raw = req.params.get("vars")
+    if vars_raw:
+        try:
+            variables = json.loads(vars_raw)
+        except ValueError:
+            return func.HttpResponse(f"Invalid JSON in vars= param: {vars_raw!r}", status_code=400)
+
+    try:
+        data = execute(query, variables)
     except RuntimeError as exc:
         return func.HttpResponse(str(exc), status_code=400)
     return func.HttpResponse(str(data), mimetype="application/json; charset=utf-8")
