@@ -29,31 +29,26 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      # Installed directly into .python_packages/lib/site-packages -- the
-      # exact path the Azure Functions Python worker puts on sys.path -- so
-      # dependencies are present in the deployed zip itself, rather than
-      # relying on a remote build step to install them server-side. A venv
-      # here doesn't help: each `run:` step is a fresh shell, so activating
-      # one in a prior step has no effect on this one anyway. (Portal's
-      # default template creates a venv, installs into it, then excludes
-      # venv/ from the zip -- shipping zero dependencies. Same fix already
-      # applied in unifi-edge/starlink-edge's workflows.)
+      - name: Create and start virtual environment
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+
       - name: Install dependencies
-        run: pip install --target=".python_packages/lib/site-packages" -r requirements.txt
+        run: pip install -r requirements.txt
 
       # Optional: Add step to run tests here
 
-      # `./*` is a shell glob and does NOT match dotfiles/dot-directories,
-      # so .python_packages would be silently excluded from the archive if
-      # not listed explicitly.
       - name: Zip artifact for deployment
-        run: zip release.zip ./* .python_packages -r
+        run: zip release.zip ./* -r
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: python-app
-          path: release.zip
+          path: |
+            release.zip
+            !venv/
 
   deploy:
     runs-on: ubuntu-latest
@@ -76,9 +71,9 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_E161098DE31A4F219EC708A6FA1EF754 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_5A301D20E550407E8724E8347088E485 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_49702E1731724AD1A9C4C9E0865F65B8 }}
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_3F1C681EEE3649208CD8032874E9279A }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6023651D16A445EDB4C7867A5D1DD073 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_CCFEC7E406DD4952813335BAE852C90F }}
 
       - name: 'Deploy to Azure Functions'
         uses: Azure/functions-action@v1
