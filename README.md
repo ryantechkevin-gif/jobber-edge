@@ -42,10 +42,14 @@ ever gets out of sync (e.g. state restored from an old backup), the fix
 is just re-running `/api/jobber/authorize`.
 
 This flow only works against a real, publicly reachable callback URL --
-it can't be completed against `localhost`. Whatever Function App ends up
-hosting this (the existing `jobberwsw` app from an earlier, abandoned
-Power BI attempt, or a fresh one), `JOBBER_REDIRECT_URI` just needs to
-match whatever's registered in Jobber's Developer Center for it.
+it can't be completed against `localhost`.
+
+**Target Function App: `jobberwsw`.** That app already exists from an
+earlier, abandoned Power BI integration attempt -- this repo replaces its
+code entirely (see Deploying below) rather than standing up a new app, so
+`JOBBER_REDIRECT_URI` stays exactly what's already registered in Jobber's
+Developer Center:
+`https://jobberwsw-d2d4e3dmafaydbbu.westus-01.azurewebsites.net/api/jobber/callback`
 
 **Security note:** tokens are stored as plain JSON in the same Blob
 Storage account the Function App already uses for its own bookkeeping
@@ -110,17 +114,21 @@ can't complete the initial authorization on its own.
 
 ## Deploying
 
-Not wired to Azure yet. Following the same pattern as `unifi-edge` and
-`starlink-edge`:
+Not wired to Azure yet. This repo replaces the code currently running in
+the existing `jobberwsw` Function App (the abandoned Power BI attempt) --
+same overall steps as `unifi-edge`/`starlink-edge`:
 
-1. Pick (or reuse) a Function App -- e.g. the existing `jobberwsw` app, or
-   a new one.
-2. In its **Deployment Center**, connect this GitHub repo/branch. Azure
-   Portal generates the matching `.github/workflows/*.yml` with the
-   correct app name and `AZUREAPPSERVICE_*` secrets wired up.
-3. In its **Configuration**, set the App Settings listed above
+1. In `jobberwsw`'s **Deployment Center**, connect this GitHub repo,
+   branch `main`. Azure Portal generates the matching
+   `.github/workflows/*.yml` with the correct app name and
+   `AZUREAPPSERVICE_*` secrets wired up -- the next push overwrites
+   whatever's currently deployed there.
+2. In its **Configuration**, clear out any leftover settings from the old
+   Power BI integration, and set the App Settings listed above
    (`JOBBER_CLIENT_ID`, `JOBBER_CLIENT_SECRET`, `JOBBER_REDIRECT_URI`,
-   `TEAMS_WEBHOOK_URL`, `PYTHONPATH=src`, etc).
-4. Make sure `JOBBER_REDIRECT_URI` and the redirect URI registered in
-   Jobber's Developer Center match exactly, then run the one-time
+   `TEAMS_WEBHOOK_URL`, `PYTHONPATH=src`, etc). `AzureWebJobsStorage`
+   should already be set -- Azure provisions that automatically.
+3. Confirm `JOBBER_REDIRECT_URI` matches the redirect URI already
+   registered in Jobber's Developer Center (it should, unchanged), then
+   run the one-time
    `/api/jobber/authorize` step above.
