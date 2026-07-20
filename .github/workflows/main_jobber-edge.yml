@@ -57,19 +57,11 @@ jobs:
           name: python-app
           path: release.zip
 
-  # Uses a Publish Profile (basic-auth deployment credential) instead of
-  # OIDC/federated-identity login -- Deployment Center's automatic identity
-  # provisioning kept failing (AADSTS700213: no matching federated identity
-  # record found), and the App Registration it referenced never actually
-  # existed in Entra ID, most likely a tenant permission restriction on
-  # creating App Registrations. This sidesteps that entirely: download the
-  # publish profile from the jobber-edge Function App's Overview page in
-  # the Azure Portal ("Get publish profile"), and store its full contents
-  # as the AZURE_FUNCTIONAPP_PUBLISH_PROFILE repo secret.
   deploy:
     runs-on: ubuntu-latest
     needs: build
     permissions:
+      id-token: write #This is required for requesting the JWT
       contents: read #This is required for actions/checkout
 
     steps:
@@ -82,6 +74,13 @@ jobs:
         run: |
           unzip release.zip
           rm release.zip
+        
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_3F1C681EEE3649208CD8032874E9279A }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6023651D16A445EDB4C7867A5D1DD073 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_CCFEC7E406DD4952813335BAE852C90F }}
 
       - name: 'Deploy to Azure Functions'
         uses: Azure/functions-action@v1
@@ -90,4 +89,4 @@ jobs:
           app-name: 'jobber-edge'
           slot-name: 'Production'
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
-          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+          
