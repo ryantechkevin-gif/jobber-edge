@@ -1,0 +1,22 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "PYTHONPATH": "src",
+
+    "TEAMS_WEBHOOK_URL": "",
+
+    "JOBBER_CLIENT_ID": "",
+    "JOBBER_CLIENT_SECRET": "",
+    "JOBBER_REDIRECT_URI": "",
+
+    "JOBBER_API_BASE_URL": "https://api.getjobber.com",
+    "JOBBER_OAUTH_AUTHORIZE_PATH": "/api/oauth/authorize",
+    "JOBBER_OAUTH_TOKEN_PATH": "/api/oauth/token",
+    "JOBBER_GRAPHQL_PATH": "/api/graphql",
+    "JOBBER_API_VERSION": "2025-04-16",
+
+    "JOBBER_STATE_CONTAINER": "jobber-monitor-state"
+  }
+}

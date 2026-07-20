@@ -1,0 +1,8 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.env
+local.settings.json
+.python_packages/
+release.zip
