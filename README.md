@@ -44,12 +44,12 @@ is just re-running `/api/jobber/authorize`.
 This flow only works against a real, publicly reachable callback URL --
 it can't be completed against `localhost`.
 
-**Target Function App: `jobberwsw`.** That app already exists from an
-earlier, abandoned Power BI integration attempt -- this repo replaces its
-code entirely (see Deploying below) rather than standing up a new app, so
-`JOBBER_REDIRECT_URI` stays exactly what's already registered in Jobber's
-Developer Center:
-`https://jobberwsw-d2d4e3dmafaydbbu.westus-01.azurewebsites.net/api/jobber/callback`
+**Target Function App: new, dedicated to this repo** -- not the existing
+`jobberwsw` app (that one was an earlier, abandoned Power BI integration
+attempt, left as-is). Once the new app exists, update the redirect URI
+registered for this app in Jobber's Developer Center to match its real
+callback URL (`https://<new-app-name>.azurewebsites.net/api/jobber/callback`),
+and set `JOBBER_REDIRECT_URI` to the same value.
 
 **Security note:** tokens are stored as plain JSON in the same Blob
 Storage account the Function App already uses for its own bookkeeping
@@ -114,21 +114,19 @@ can't complete the initial authorization on its own.
 
 ## Deploying
 
-Not wired to Azure yet. This repo replaces the code currently running in
-the existing `jobberwsw` Function App (the abandoned Power BI attempt) --
-same overall steps as `unifi-edge`/`starlink-edge`:
+Not wired to Azure yet. Same overall steps as `unifi-edge`/`starlink-edge`,
+against a fresh Function App (not the existing `jobberwsw`, which stays
+untouched):
 
-1. In `jobberwsw`'s **Deployment Center**, connect this GitHub repo,
-   branch `main`. Azure Portal generates the matching
-   `.github/workflows/*.yml` with the correct app name and
-   `AZUREAPPSERVICE_*` secrets wired up -- the next push overwrites
-   whatever's currently deployed there.
-2. In its **Configuration**, clear out any leftover settings from the old
-   Power BI integration, and set the App Settings listed above
+1. Create a new Azure Function App (Python, Linux, Consumption or matching
+   plan) -- e.g. `wsw-jobber-monitor`.
+2. In its **Deployment Center**, connect this GitHub repo, branch `main`.
+   Azure Portal generates the matching `.github/workflows/*.yml` with the
+   correct app name and `AZUREAPPSERVICE_*` secrets wired up.
+3. In its **Configuration**, set the App Settings listed above
    (`JOBBER_CLIENT_ID`, `JOBBER_CLIENT_SECRET`, `JOBBER_REDIRECT_URI`,
-   `TEAMS_WEBHOOK_URL`, `PYTHONPATH=src`, etc). `AzureWebJobsStorage`
-   should already be set -- Azure provisions that automatically.
-3. Confirm `JOBBER_REDIRECT_URI` matches the redirect URI already
-   registered in Jobber's Developer Center (it should, unchanged), then
-   run the one-time
-   `/api/jobber/authorize` step above.
+   `TEAMS_WEBHOOK_URL`, `PYTHONPATH=src`, etc).
+4. In Jobber's Developer Center, update this app's registered redirect URI
+   to `https://<the new app's hostname>.azurewebsites.net/api/jobber/callback`,
+   and set `JOBBER_REDIRECT_URI` to match exactly.
+5. Run the one-time `/api/jobber/authorize` step above.
