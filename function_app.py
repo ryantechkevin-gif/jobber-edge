@@ -10,6 +10,7 @@ from jobber_monitor import oauth
 from jobber_monitor.jobber_client import execute
 from jobber_monitor.queries import ACCOUNT_QUERY, INTROSPECT_TYPE_QUERY
 from jobber_monitor.main import run as weekly_report_run
+from jobber_monitor.report import fetch_client_dashboard
 
 app = func.FunctionApp()
 
@@ -108,6 +109,22 @@ def jobber_query_http(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
         data = execute(query, variables)
+    except RuntimeError as exc:
+        return func.HttpResponse(str(exc), status_code=400)
+    return func.HttpResponse(str(data), mimetype="application/json; charset=utf-8")
+
+
+# Everything about one client in a single call -- identity, tags, notes,
+# properties, jobs, quotes, invoices, requests. GET /api/jobber/client?id=<EncodedId>
+# `id` is the client's Jobber id (e.g. copy it from a client's jobberWebUri,
+# or from a clients() query result).
+@app.route(route="jobber/client", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
+def jobber_client_http(req: func.HttpRequest) -> func.HttpResponse:
+    client_id = req.params.get("id")
+    if not client_id:
+        return func.HttpResponse("Missing required query param: id (a client's EncodedId)", status_code=400)
+    try:
+        data = fetch_client_dashboard(client_id)
     except RuntimeError as exc:
         return func.HttpResponse(str(exc), status_code=400)
     return func.HttpResponse(str(data), mimetype="application/json; charset=utf-8")

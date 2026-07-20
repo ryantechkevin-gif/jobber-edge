@@ -1,16 +1,22 @@
 """
 GraphQL query strings.
 
-Field names for `account`, `clients`, `invoices`, and `quotes` below are
-confirmed against real Jobber integration examples (Maton's Jobber
-connector reference, cross-checked against Jobber's own API docs).
+Everything below (except the `emails { address }` / `phones { number }`
+shape in CLIENTS_QUERY, still taken on faith from a third-party reference)
+is confirmed field-by-field against the live schema via /api/jobber/query
+introspection, not guessed. Two things worth knowing from that exploration:
 
-Jobs, requests, visits, expenses, and the "client communications" dataset
-referenced in WeSpeakWiFi's existing Client Communications Audit report
-are NOT yet confirmed against a live schema -- rather than guess field
-names and risk a query that's subtly wrong (or silently missing fields),
-use INTROSPECT_TYPE_QUERY via the /api/jobber/schema route once OAuth is
-connected to check the real shape before adding a query for any of those.
+  - Jobber's public API has NO query or mutation anywhere for reading or
+    sending actual client communication content (texts/emails). A
+    `Client.messages` connection exists, but its edge type has no `node`
+    field at all (confirmed even with includeDeprecated) -- it can report
+    a bare totalCount and nothing else. Any messaging feature needs its
+    own channel entirely outside Jobber.
+  - `TaskFilterAttributes` has no clientId filter, so "all tasks for this
+    client" can't be fetched directly at the root -- tasks are only
+    efficiently enumerable via whatever Job/Quote/Request they're
+    attached to (both have their own nested `tasks` connection), not
+    globally by client.
 """
 
 ACCOUNT_QUERY = """
@@ -46,8 +52,8 @@ query InvoicesPage($first: Int!, $after: String) {
       id
       invoiceNumber
       invoiceStatus
-      total
       createdAt
+      amounts { total invoiceBalance }
     }
     pageInfo { hasNextPage endCursor }
   }
@@ -63,8 +69,103 @@ query QuotesPage($first: Int!, $after: String) {
       title
       quoteStatus
       createdAt
+      amounts { total }
     }
     pageInfo { hasNextPage endCursor }
+  }
+}
+"""
+
+# Everything about one client in a single call: identity/contact info,
+# tags, notes (ClientNote.message is the actual note text), properties,
+# jobs, quotes, invoices, and requests. Deliberately excludes `messages`
+# (see module docstring -- it's real but content-less) and doesn't attempt
+# a client-wide task rollup (no clientId filter exists on tasks; use
+# Job/Quote/Request's own nested `tasks` connection instead if needed).
+# `first: 10` per connection is a reasonable dashboard-sized snapshot --
+# raise it or add pagination if a client legitimately has more history
+# than that worth seeing.
+CLIENT_DASHBOARD_QUERY = """
+query ClientDashboard($id: EncodedId!) {
+  client(id: $id) {
+    id
+    name
+    firstName
+    lastName
+    companyName
+    isCompany
+    isLead
+    isArchived
+    balance
+    createdAt
+    updatedAt
+    email
+    phone
+    jobberWebUri
+    tags(first: 20) {
+      nodes { id label }
+    }
+    notes(first: 10) {
+      nodes { id message pinned createdAt }
+    }
+    clientProperties(first: 10) {
+      nodes {
+        id
+        name
+        jobberWebUri
+        address { street city province postalCode }
+      }
+    }
+    jobs(first: 10) {
+      nodes {
+        id
+        jobNumber
+        title
+        jobStatus
+        jobType
+        total
+        invoicedTotal
+        uninvoicedTotal
+        startAt
+        endAt
+        completedAt
+        jobberWebUri
+      }
+    }
+    quotes(first: 10) {
+      nodes {
+        id
+        quoteNumber
+        title
+        quoteStatus
+        message
+        sentAt
+        jobberWebUri
+        amounts { total }
+      }
+    }
+    invoices(first: 10) {
+      nodes {
+        id
+        invoiceNumber
+        invoiceStatus
+        subject
+        message
+        issuedDate
+        dueDate
+        jobberWebUri
+        amounts { total invoiceBalance }
+      }
+    }
+    requests(first: 10) {
+      nodes {
+        id
+        requestStatus
+        title
+        createdAt
+        jobberWebUri
+      }
+    }
   }
 }
 """
