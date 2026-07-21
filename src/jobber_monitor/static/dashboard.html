@@ -70,7 +70,11 @@
     display: flex; flex-direction: column; background: var(--surface);
   }
   .sidebar-head { padding: 18px 16px 12px; border-bottom: 1px solid var(--border); }
-  .sidebar-head .brand { font-size: 13px; font-weight: 700; letter-spacing: 0.02em; margin: 0 0 2px; }
+  .sidebar-head .logo-wrap {
+    display: inline-block; background: #ffffff; padding: 10px 14px;
+    border-radius: 10px; margin-bottom: 10px; line-height: 0;
+  }
+  .sidebar-head .logo-wrap img { display: block; width: 100%; max-width: 168px; height: auto; }
   .sidebar-head .sub { font-size: 11.5px; color: var(--text-faint); margin: 0; }
 
   .search-box { padding: 12px 12px 8px; }
@@ -175,6 +179,42 @@
   .property-block + .property-block { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
   .property-block .prop-heading { font-size: 12px; font-weight: 700; color: var(--text-dim); margin-bottom: 6px; }
 
+  /* ---- notes feed: most important content on the page, so it gets its
+     own prominent, timeline-styled section above Jobs rather than a plain
+     panel buried in a side column ---- */
+  .notes-feed-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    margin-bottom: 24px;
+  }
+  .notes-feed { padding: 4px 18px 14px; }
+  .note-entry { display: flex; gap: 14px; padding: 12px 0; position: relative; }
+  .note-entry:not(:last-child)::after {
+    content: ''; position: absolute; left: 5px; top: 28px; bottom: -12px;
+    width: 1px; background: var(--border);
+  }
+  .note-dot {
+    width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; z-index: 1;
+    background: var(--surface-2); border: 2px solid var(--text-faint);
+  }
+  .note-entry.latest .note-dot {
+    background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+  .note-entry-body { flex: 1; min-width: 0; }
+  .note-meta-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
+  .note-time { font-size: 11.5px; color: var(--text-faint); }
+  .note-entry.latest .note-time { color: var(--accent); font-weight: 700; }
+  .note-badge {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent);
+  }
+  .note-badge.pin { background: var(--warning-soft); color: var(--warning); }
+  .note-text { font-size: 13.5px; white-space: pre-line; color: var(--text-dim); }
+  .note-entry.latest .note-text { font-size: 15.5px; font-weight: 500; color: var(--text); }
+
   footer.source-note { margin-top: 32px; font-size: 12px; color: var(--text-faint); text-align: center; }
 
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: -2px; margin-right: 6px; }
@@ -187,7 +227,9 @@
 <div class="shell">
   <aside class="sidebar">
     <div class="sidebar-head">
-      <p class="brand">WeSpeakWiFi</p>
+      <div class="logo-wrap">
+        <img src="https://d13cw1lxlociqy.cloudfront.net/ajwwcxezl2346z4rhdbf8xzvv3tq" alt="WeSpeakWiFi" width="168">
+      </div>
       <p class="sub">Client dashboard · live via jobber-edge</p>
     </div>
     <div class="search-box">
@@ -233,6 +275,22 @@
     if (!iso) return '—';
     var d = new Date(iso);
     return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  function fmtRelative(iso) {
+    if (!iso) return '—';
+    var diffMs = Date.now() - new Date(iso).getTime();
+    var mins = Math.floor(diffMs / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return mins + (mins === 1 ? ' minute ago' : ' minutes ago');
+    var hours = Math.floor(mins / 60);
+    if (hours < 24) return hours + (hours === 1 ? ' hour ago' : ' hours ago');
+    var days = Math.floor(hours / 24);
+    if (days < 30) return days + (days === 1 ? ' day ago' : ' days ago');
+    var months = Math.floor(days / 30);
+    if (months < 18) return months + (months === 1 ? ' month ago' : ' months ago');
+    var years = Math.floor(days / 365);
+    return years + (years === 1 ? ' year ago' : ' years ago');
   }
 
   function fmtMoney(n) {
@@ -367,6 +425,7 @@
     html += '</div>';
 
     html += renderStatRow(c);
+    html += renderNotesFeed(c.notes.nodes);
 
     html += '<div class="grid"><div class="col">';
     html += renderJobs(c.jobs.nodes);
@@ -375,7 +434,6 @@
     html += renderProperties(c.clientProperties.nodes);
     html += renderQuotes(c.quotes.nodes);
     html += renderRequests(c.requests.nodes);
-    html += renderNotes(c.notes.nodes);
     html += '</div></div>';
 
     html += '<footer class="source-note">Live from Jobber via jobber-edge · client id ' + esc(c.id.slice(0, 24)) + '…</footer>';
@@ -476,12 +534,41 @@
     return panel('Requests', requests.length + ' shown', rows);
   }
 
-  function renderNotes(notes) {
-    if (!notes.length) return panel('Notes', null, '<div class="empty-state">No notes on file.</div>');
-    var rows = notes.map(function (n) {
-      return '<div class="kv-row" style="align-items:flex-start;"><span class="k" style="white-space:nowrap;">' + fmtDate(n.createdAt) + '</span><span class="v" style="text-align:left;white-space:pre-line;">' + esc(n.message) + '</span></div>';
+  function renderNotesFeed(notes) {
+    if (!notes.length) {
+      return '<section class="notes-feed-panel"><div class="panel-head"><h2>Notes</h2></div>' +
+        '<div class="notes-feed"><div class="empty-state">No notes on file for this client.</div></div></section>';
+    }
+
+    // Pinned notes list first (matching how Jobber itself treats them),
+    // then newest first within each group -- not just whatever order the
+    // API happened to return. The "Latest" badge/emphasis tracks the
+    // actual most-recent note by date, though, even if a pinned-but-older
+    // note is listed above it.
+    var mostRecentId = notes.reduce(function (latest, n) {
+      return (!latest || new Date(n.createdAt) > new Date(latest.createdAt)) ? n : latest;
+    }, null).id;
+
+    var sorted = notes.slice().sort(function (a, b) {
+      if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+
+    var entries = sorted.map(function (n) {
+      var isLatest = n.id === mostRecentId;
+      var badges = '';
+      if (n.pinned) badges += '<span class="note-badge pin">📌 Pinned</span>';
+      if (isLatest) badges += '<span class="note-badge">Latest</span>';
+      return '<div class="note-entry' + (isLatest ? ' latest' : '') + '">' +
+        '<div class="note-dot"></div>' +
+        '<div class="note-entry-body">' +
+        '<div class="note-meta-row"><span class="note-time">' + esc(fmtRelative(n.createdAt)) + ' · ' + fmtDate(n.createdAt) + '</span>' + badges + '</div>' +
+        '<div class="note-text">' + esc(n.message) + '</div>' +
+        '</div></div>';
     }).join('');
-    return panel('Notes', notes.length + ' shown', rows);
+
+    return '<section class="notes-feed-panel"><div class="panel-head"><h2>Notes</h2><span class="count-note">' + notes.length + ' · newest first</span></div>' +
+      '<div class="notes-feed">' + entries + '</div></section>';
   }
 
   loadClients();
