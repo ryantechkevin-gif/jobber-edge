@@ -77,6 +77,18 @@
   .sidebar-head .logo-wrap img { display: block; width: 100%; max-width: 168px; height: auto; }
   .sidebar-head .sub { font-size: 11.5px; color: var(--text-faint); margin: 0; }
 
+  .recent-strip { padding: 10px 12px 2px; }
+  .recent-strip .recent-label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); margin: 0 0 7px; }
+  .recent-chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; }
+  .recent-chip {
+    flex-shrink: 0; max-width: 150px; padding: 6px 12px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+    font-size: 12px; font-family: inherit; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .recent-chip:hover { border-color: var(--accent); }
+  .recent-chip.active { background: var(--accent-soft); color: var(--accent); border-color: transparent; font-weight: 600; }
+
   .search-box { padding: 12px 12px 8px; }
   .search-box input {
     width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
@@ -265,6 +277,10 @@
       <p class="sub">Client dashboard · live via jobber-edge</p>
     </div>
     <button type="button" id="piiToggle" class="pii-toggle">🔒 PII hidden — click to reveal</button>
+    <div class="recent-strip">
+      <p class="recent-label">Recently updated</p>
+      <div id="recentChips" class="recent-chips"></div>
+    </div>
     <div class="search-box">
       <input type="text" id="search" placeholder="Search clients…" autocomplete="off">
     </div>
@@ -288,6 +304,8 @@
 
   var allClients = [];
   var activeId = null;
+  var serverMatches = {}; // id -> client, from the debounced richer search
+  var searchDebounce = null;
 
   var piiToggleBtn = document.getElementById('piiToggle');
   piiToggleBtn.addEventListener('click', function () {
@@ -378,6 +396,48 @@
     });
   }
 
+  // "Recently updated" strip across the top of the sidebar -- a faster way
+  // to jump back to whoever you were just working on than typing a name.
+  function loadRecentClients() {
+    var query = 'query RecentClients($first: Int!) { clients(first: $first, sort: {key: UPDATED_AT, direction: DESCENDING}) { nodes { id name companyName } } }';
+    gql(query, { first: 12 }).then(function (data) {
+      renderRecentChips(data.clients.nodes);
+    }).catch(function () {
+      document.getElementById('recentChips').innerHTML = '';
+    });
+  }
+
+  function renderRecentChips(clients) {
+    var el = document.getElementById('recentChips');
+    if (!clients.length) { el.innerHTML = ''; return; }
+    el.innerHTML = clients.map(function (c) {
+      return '<button class="recent-chip' + (c.id === activeId ? ' active' : '') + '" data-id="' + esc(c.id) + '" title="' + esc(c.name) + '">' +
+        '<span class="pii-field">' + esc(c.name) + '</span></button>';
+    }).join('');
+    Array.prototype.forEach.call(el.querySelectorAll('.recent-chip'), function (btn) {
+      btn.addEventListener('click', function () { selectClient(btn.getAttribute('data-id')); });
+    });
+  }
+
+  // Richer search: NAMES/EMAILS/PHONES/NOTES/CUSTOM_FIELDS/PROPERTIES via
+  // Jobber's own search, debounced so it doesn't fire on every keystroke.
+  // Runs *in addition to* the instant local name/company filter below --
+  // results merge in a moment later rather than replacing the fast path.
+  function searchServerSide(term) {
+    if (searchDebounce) clearTimeout(searchDebounce);
+    if (term.length < 2) return;
+    searchDebounce = setTimeout(function () {
+      var query = 'query SearchClients($term: String!, $fields: [ClientSearchField!], $first: Int!) { clients(searchTerm: $term, searchFields: $fields, first: $first) { nodes { id name companyName isArchived isLead } } }';
+      var fields = ['NAMES', 'EMAILS', 'PRIMARY_EMAIL', 'PHONES', 'NOTES', 'CUSTOM_FIELDS', 'PROPERTIES'];
+      gql(query, { term: term, fields: fields, first: 25 }).then(function (data) {
+        // Stale response guard -- only apply if the box still holds this term.
+        if (document.getElementById('search').value.trim().toLowerCase() !== term) return;
+        data.clients.nodes.forEach(function (c) { serverMatches[c.id] = c; });
+        renderClientList(currentFilteredList());
+      }).catch(function () { /* silent -- the local filter above still works */ });
+    }, 350);
+  }
+
   function renderClientList(clients) {
     var listEl = document.getElementById('clientList');
     if (!clients.length) {
@@ -405,11 +465,10 @@
 
   document.getElementById('search').addEventListener('input', function (e) {
     var term = e.target.value.trim().toLowerCase();
+    serverMatches = {}; // a new term invalidates whatever the last one found
     if (!term) { renderClientList(allClients); return; }
-    renderClientList(allClients.filter(function (c) {
-      return c.name.toLowerCase().indexOf(term) !== -1 ||
-        (c.companyName || '').toLowerCase().indexOf(term) !== -1;
-    }));
+    renderClientList(currentFilteredList());
+    searchServerSide(term);
   });
 
   // ---------- client detail ----------
@@ -419,6 +478,9 @@
   function selectClient(id) {
     activeId = id;
     renderClientList(currentFilteredList());
+    Array.prototype.forEach.call(document.querySelectorAll('.recent-chip'), function (btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-id') === id);
+    });
     var content = document.getElementById('content');
     content.innerHTML = '<div class="placeholder"><span class="spinner"></span>Loading client…</div>';
 
@@ -432,10 +494,22 @@
   function currentFilteredList() {
     var term = document.getElementById('search').value.trim().toLowerCase();
     if (!term) return allClients;
-    return allClients.filter(function (c) {
+
+    var byId = {};
+    allClients.filter(function (c) {
       return c.name.toLowerCase().indexOf(term) !== -1 ||
         (c.companyName || '').toLowerCase().indexOf(term) !== -1;
+    }).forEach(function (c) { byId[c.id] = c; });
+    // Merge in richer server-side matches (email/phone/notes/custom
+    // fields/properties) once they've arrived -- same client found two
+    // ways just dedupes by id, doesn't show twice.
+    Object.keys(serverMatches).forEach(function (id) {
+      if (!byId[id]) byId[id] = serverMatches[id];
     });
+
+    var merged = Object.keys(byId).map(function (id) { return byId[id]; });
+    merged.sort(function (a, b) { return a.name.localeCompare(b.name); });
+    return merged;
   }
 
   function renderClient(c) {
@@ -618,6 +692,7 @@
   }
 
   loadClients();
+  loadRecentClients();
 })();
 </script>
 </body>
