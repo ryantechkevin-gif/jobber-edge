@@ -73,6 +73,20 @@
   }
   .shell.sidebar-collapsed .sidebar { width: 0; border-right-color: transparent; }
 
+  /* ---- A-Z/0-9 jump bar: wraps naturally as the sidebar is resized,
+     each letter roughly 2x normal text size for an easy target ---- */
+  .alpha-jump {
+    display: flex; flex-wrap: wrap; gap: 0 2px; padding: 12px 8px 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .alpha-jump button {
+    background: none; border: none; color: var(--text-dim); font-family: inherit;
+    font-size: 24px; font-weight: 700; line-height: 1.3; padding: 2px 4px;
+    border-radius: 5px; cursor: pointer;
+  }
+  .alpha-jump button:hover { color: var(--accent); background: var(--surface-2); }
+  .alpha-jump button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
   .search-box { padding: 16px 12px 8px; }
   .search-wrap { position: relative; }
   .search-wrap input {
@@ -347,6 +361,7 @@
 
 <div class="shell">
   <aside class="sidebar">
+    <div id="alphaJump" class="alpha-jump"></div>
     <button type="button" id="piiToggle" class="pii-toggle">🔒 PII hidden — click to reveal</button>
     <div class="search-box">
       <div class="search-wrap">
@@ -409,6 +424,36 @@
     piiToggleBtn.textContent = hidden ? '🔓 PII visible — click to hide' : '🔒 PII hidden — click to reveal';
     piiToggleBtn.classList.toggle('exposed', hidden);
   });
+
+  // ---------- A-Z/0-9 jump bar ----------
+
+  (function renderAlphaJump() {
+    var chars = 'abcdefghijklmnopqrstuvwxyz0123456789'.split('');
+    var el = document.getElementById('alphaJump');
+    el.innerHTML = chars.map(function (ch) {
+      return '<button type="button" data-letter="' + ch + '">' + ch + '</button>';
+    }).join('');
+    Array.prototype.forEach.call(el.querySelectorAll('button'), function (btn) {
+      btn.addEventListener('click', function () { jumpToLetter(btn.getAttribute('data-letter')); });
+    });
+  })();
+
+  // Jumps to the first client whose name starts at or after the clicked
+  // letter/digit (so clicking a letter nobody's name starts with still
+  // lands somewhere sensible, same idea as an iOS contacts index).
+  function jumpToLetter(letter) {
+    var items = document.querySelectorAll('#clientList .client-item');
+    if (!items.length) return;
+    for (var i = 0; i < items.length; i++) {
+      var nameEl = items[i].querySelector('.ci-name');
+      var firstChar = ((nameEl && nameEl.textContent) || '').trim().charAt(0).toLowerCase();
+      if (firstChar >= letter) {
+        items[i].scrollIntoView({ block: 'start' });
+        return;
+      }
+    }
+    items[items.length - 1].scrollIntoView({ block: 'start' });
+  }
 
   function gql(query, variables) {
     var url = '/api/jobber/query' + qs + '&q=' + encodeURIComponent(query) +
