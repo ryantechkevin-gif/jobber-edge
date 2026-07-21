@@ -158,12 +158,13 @@
   .stat .stat-value { font-size: 22px; font-weight: 700; }
   .stat .stat-sub { font-size: 12px; color: var(--text-faint); margin-top: 4px; }
 
-  /* ---- section grid ---- */
-  .grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; }
-  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } .stat-row { grid-template-columns: repeat(2, 1fr); } }
-  .col { display: flex; flex-direction: column; gap: 20px; }
+  /* ---- section layout: half/half rows for the desktop-first design,
+     stacking on narrow viewports ---- */
+  .grid-half { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; align-items: start; }
+  @media (max-width: 760px) { .grid-half { grid-template-columns: 1fr; } .stat-row { grid-template-columns: repeat(2, 1fr); } }
 
-  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); margin-bottom: 20px; }
+  .grid-half .panel, .grid-half .notes-feed-panel { margin-bottom: 0; height: 100%; }
   .panel-head { display: flex; align-items: baseline; justify-content: space-between; padding: 16px 18px 12px; }
   .panel-head h2 { font-size: 14px; font-weight: 700; letter-spacing: 0.02em; margin: 0; }
   .panel-head .count-note { font-size: 11.5px; color: var(--text-faint); }
@@ -183,13 +184,22 @@
   .pill.st-accent { background: var(--accent-soft); color: var(--accent); }
   .pill.st-warning { background: var(--warning-soft); color: var(--warning); }
 
-  table.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  table.data-table td { padding: 8px 0; border-top: 1px solid var(--border); vertical-align: top; }
-  table.data-table tr:first-child td { border-top: none; }
-  table.data-table .col-num { color: var(--text-dim); width: 1%; white-space: nowrap; padding-right: 12px; }
-  table.data-table .col-date { color: var(--text-faint); font-size: 12px; white-space: nowrap; }
-  table.data-table .col-amount { text-align: right; font-weight: 600; white-space: nowrap; }
-  .table-scroll { overflow-x: auto; }
+  /* ---- invoices: a lean horizontal strip, not a detail table -- each
+     chip links straight through to the real invoice in Jobber ---- */
+  .invoice-strip { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 6px; }
+  .invoice-chip {
+    display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; min-width: 128px;
+    padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border);
+    border-left: 3px solid var(--text-faint); background: var(--surface-2);
+    text-decoration: none; color: var(--text);
+  }
+  .invoice-chip:hover { border-color: var(--accent); filter: brightness(1.04); }
+  .invoice-chip.st-good { border-left-color: var(--good); }
+  .invoice-chip.st-warning { border-left-color: var(--warning); }
+  .invoice-chip.st-accent { border-left-color: var(--accent); }
+  .invoice-chip .ic-num { font-size: 11px; color: var(--text-faint); }
+  .invoice-chip .ic-amount { font-size: 16px; font-weight: 700; }
+  .invoice-chip .ic-meta { font-size: 11px; color: var(--text-faint); display: flex; align-items: center; gap: 5px; }
 
   .kv-row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 13px; }
   .kv-row:first-child { border-top: none; }
@@ -212,7 +222,7 @@
     box-shadow: var(--shadow);
     margin-bottom: 24px;
   }
-  .notes-feed { padding: 4px 18px 14px; }
+  .notes-feed { padding: 4px 18px 14px; max-height: 420px; overflow-y: auto; }
   .note-entry { display: flex; gap: 14px; padding: 12px 0; position: relative; }
   .note-entry:not(:last-child)::after {
     content: ''; position: absolute; left: 5px; top: 28px; bottom: -12px;
@@ -459,16 +469,16 @@
     html += '</div>';
 
     html += renderStatRow(c);
-    html += renderNotesFeed(c.notes.nodes);
 
-    html += '<div class="grid"><div class="col">';
+    // Layout follows the actual client workflow: request -> quote -> job ->
+    // invoice. Notes+Properties share the top row (context first), then
+    // Requests+Quotes half-and-half, then Jobs full width, then Invoices
+    // full width as a lean summary strip -- not the reverse-chronological
+    // grid this used to be.
+    html += '<div class="grid-half">' + renderNotesFeed(c.notes.nodes) + renderProperties(c.clientProperties.nodes) + '</div>';
+    html += '<div class="grid-half">' + renderRequests(c.requests.nodes) + renderQuotes(c.quotes.nodes) + '</div>';
     html += renderJobs(c.jobs.nodes);
-    html += renderInvoices(c.invoices.nodes);
-    html += '</div><div class="col">';
-    html += renderProperties(c.clientProperties.nodes);
-    html += renderQuotes(c.quotes.nodes);
-    html += renderRequests(c.requests.nodes);
-    html += '</div></div>';
+    html += renderInvoicesStrip(c.invoices.nodes);
 
     html += '<footer class="source-note">Live from Jobber via jobber-edge · client id ' + esc(c.id.slice(0, 24)) + '…</footer>';
 
@@ -514,17 +524,19 @@
     return panel('Jobs', jobs.length + ' shown', rows);
   }
 
-  function renderInvoices(invoices) {
+  // A lean summary strip, not a detail table -- number, date, status, amount
+  // per invoice, clickable straight through to the real record in Jobber
+  // (preferred over an in-app detail view, per how this is meant to be used).
+  function renderInvoicesStrip(invoices) {
     if (!invoices.length) return panel('Invoices', null, '<div class="empty-state">No invoices on file.</div>');
-    var rows = invoices.map(function (i) {
-      return '<tr>' +
-        '<td class="col-num mono">#' + esc(i.invoiceNumber) + '</td>' +
-        '<td class="col-date">' + fmtDate(i.issuedDate) + '</td>' +
-        '<td><span class="pill ' + statusPillClass(i.invoiceStatus) + '">' + esc(statusLabel(i.invoiceStatus)) + '</span></td>' +
-        '<td class="col-amount mono">' + fmtMoney(i.amounts && i.amounts.total) + '</td>' +
-        '</tr>';
+    var chips = invoices.map(function (i) {
+      return '<a class="invoice-chip ' + statusPillClass(i.invoiceStatus) + '" href="' + esc(i.jobberWebUri) + '" target="_blank" rel="noopener">' +
+        '<span class="ic-num mono">#' + esc(i.invoiceNumber) + '</span>' +
+        '<span class="ic-amount mono">' + fmtMoney(i.amounts && i.amounts.total) + '</span>' +
+        '<span class="ic-meta"><span class="pill ' + statusPillClass(i.invoiceStatus) + '">' + esc(statusLabel(i.invoiceStatus)) + '</span> · ' + fmtDate(i.issuedDate) + '</span>' +
+        '</a>';
     }).join('');
-    return panel('Invoices', invoices.length + ' shown', '<div class="table-scroll"><table class="data-table"><tbody>' + rows + '</tbody></table></div>');
+    return panel('Invoices', invoices.length + ' shown · click through to Jobber', '<div class="invoice-strip">' + chips + '</div>');
   }
 
   function renderProperties(props) {
