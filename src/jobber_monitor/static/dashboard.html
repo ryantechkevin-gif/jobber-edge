@@ -62,39 +62,31 @@
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-variant-numeric: tabular-nums; }
   a { color: inherit; }
 
-  /* ---- shell: sidebar + main ---- */
-  .shell { display: flex; min-height: 100vh; }
+  /* ---- shell: sidebar + main, both fixed-height so each scrolls
+     independently under its own non-scrolling header ---- */
+  .shell { display: flex; height: 100vh; }
 
   .sidebar {
     width: 280px; flex-shrink: 0; border-right: 1px solid var(--border);
     display: flex; flex-direction: column; background: var(--surface);
+    overflow: hidden; transition: width 0.18s ease, border-color 0.18s ease;
   }
-  .sidebar-head { padding: 18px 16px 12px; border-bottom: 1px solid var(--border); }
-  .sidebar-head .logo-wrap {
-    display: inline-block; background: #ffffff; padding: 10px 14px;
-    border-radius: 10px; margin-bottom: 10px; line-height: 0;
-  }
-  .sidebar-head .logo-wrap img { display: block; width: 100%; max-width: 168px; height: auto; }
-  .sidebar-head .sub { font-size: 11.5px; color: var(--text-faint); margin: 0; }
+  .shell.sidebar-collapsed .sidebar { width: 0; border-right-color: transparent; }
 
-  .recent-strip { padding: 10px 12px 2px; }
-  .recent-strip .recent-label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); margin: 0 0 7px; }
-  .recent-chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; }
-  .recent-chip {
-    flex-shrink: 0; max-width: 150px; padding: 6px 12px; border-radius: 999px;
-    border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
-    font-size: 12px; font-family: inherit; cursor: pointer;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .recent-chip:hover { border-color: var(--accent); }
-  .recent-chip.active { background: var(--accent-soft); color: var(--accent); border-color: transparent; font-weight: 600; }
-
-  .search-box { padding: 12px 12px 8px; }
-  .search-box input {
-    width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+  .search-box { padding: 16px 12px 8px; }
+  .search-wrap { position: relative; }
+  .search-wrap input {
+    width: 100%; padding: 8px 30px 8px 10px; border-radius: 8px; border: 1px solid var(--border);
     background: var(--surface-2); color: var(--text); font-size: 13px; font-family: inherit;
   }
-  .search-box input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .search-wrap input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .search-reset {
+    position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; color: var(--text-faint); cursor: pointer;
+    font-size: 13px; padding: 4px 6px; border-radius: 6px; line-height: 1;
+  }
+  .search-reset:hover { color: var(--text); background: var(--surface-2); }
+  .search-reset:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
   /* ---- PII toggle: blurred by default everywhere (sidebar list + detail
      view), one control reveals everything at once. Filtering/search still
@@ -102,7 +94,7 @@
      data, not the rendered text. ---- */
   .pii-toggle {
     display: flex; align-items: center; gap: 8px; width: 100%;
-    margin: 2px 12px 4px; padding: 8px 10px; border-radius: 8px;
+    margin: 14px 12px 4px; padding: 8px 10px; border-radius: 8px;
     border: 1px solid var(--border); background: var(--surface-2);
     color: var(--text-dim); font-family: inherit; font-size: 12.5px; font-weight: 600;
     cursor: pointer; width: calc(100% - 24px);
@@ -132,8 +124,50 @@
 
   .list-status { padding: 12px; font-size: 12.5px; color: var(--text-faint); }
 
-  /* ---- main ---- */
-  .main { flex: 1; min-width: 0; overflow-y: auto; }
+  /* ---- main: a non-scrolling top bar (logo + recently-updated strip,
+     stays put while the content below scrolls) above the scrollable
+     content area ---- */
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+  .main-topbar {
+    flex-shrink: 0; display: flex; align-items: center; gap: 14px;
+    padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--surface);
+  }
+  .sidebar-toggle {
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--text-dim); font-size: 15px; cursor: pointer;
+  }
+  .sidebar-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .sidebar-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .main-topbar .logo-wrap {
+    flex-shrink: 0; display: flex; align-items: center; background: #ffffff;
+    padding: 6px 12px; border-radius: 8px; line-height: 0;
+  }
+  .main-topbar .logo-wrap img { display: block; height: 26px; width: auto; }
+
+  .topbar-recent { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; }
+  .topbar-recent .recent-label {
+    flex-shrink: 0; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--text-faint);
+  }
+  .recent-chips { display: flex; gap: 8px; overflow-x: auto; flex: 1; min-width: 0; padding: 3px 0; }
+  .recent-chip {
+    flex-shrink: 0; max-width: 150px; padding: 6px 12px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+    font-size: 12px; font-family: inherit; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .recent-chip:hover { border-color: var(--accent); }
+  .recent-chip.active { background: var(--accent-soft); color: var(--accent); border-color: transparent; font-weight: 600; }
+
+  .version-badge {
+    flex-shrink: 0; font-size: 11px; color: var(--text-faint); white-space: nowrap;
+    padding: 4px 9px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2);
+  }
+
+  .main-scroll { flex: 1; overflow-y: auto; }
   .page { max-width: 1080px; margin: 0 auto; padding: 28px 24px 64px; }
 
   .placeholder {
@@ -270,19 +304,12 @@
 
 <div class="shell">
   <aside class="sidebar">
-    <div class="sidebar-head">
-      <div class="logo-wrap">
-        <img src="https://d13cw1lxlociqy.cloudfront.net/ajwwcxezl2346z4rhdbf8xzvv3tq" alt="WeSpeakWiFi" width="168">
-      </div>
-      <p class="sub">Client dashboard · live via jobber-edge</p>
-    </div>
     <button type="button" id="piiToggle" class="pii-toggle">🔒 PII hidden — click to reveal</button>
-    <div class="recent-strip">
-      <p class="recent-label">Recently updated</p>
-      <div id="recentChips" class="recent-chips"></div>
-    </div>
     <div class="search-box">
-      <input type="text" id="search" placeholder="Search clients…" autocomplete="off">
+      <div class="search-wrap">
+        <input type="text" id="search" placeholder="Search clients…" autocomplete="off">
+        <button type="button" id="searchReset" class="search-reset" title="Clear search" aria-label="Clear search">✕</button>
+      </div>
     </div>
     <div id="clientList" class="client-list">
       <div class="list-status"><span class="spinner"></span>Loading clients…</div>
@@ -290,8 +317,21 @@
   </aside>
 
   <main class="main">
-    <div id="content" class="page">
-      <div class="placeholder">Select a client from the list to see their full record.</div>
+    <div class="main-topbar">
+      <button type="button" id="sidebarToggle" class="sidebar-toggle" title="Show/hide client list" aria-label="Show/hide client list">☰</button>
+      <div class="logo-wrap">
+        <img src="https://d13cw1lxlociqy.cloudfront.net/ajwwcxezl2346z4rhdbf8xzvv3tq" alt="WeSpeakWiFi" width="120">
+      </div>
+      <div class="topbar-recent">
+        <span class="recent-label">Recent</span>
+        <div id="recentChips" class="recent-chips"></div>
+      </div>
+      <span class="version-badge" title="Last deployed, Arizona time">{{BUILD_STAMP}}</span>
+    </div>
+    <div class="main-scroll">
+      <div id="content" class="page">
+        <div class="placeholder">Select a client from the list to see their full record.</div>
+      </div>
     </div>
   </main>
 </div>
@@ -469,6 +509,20 @@
     if (!term) { renderClientList(allClients); return; }
     renderClientList(currentFilteredList());
     searchServerSide(term);
+  });
+
+  document.getElementById('searchReset').addEventListener('click', function () {
+    var input = document.getElementById('search');
+    input.value = '';
+    serverMatches = {};
+    if (searchDebounce) clearTimeout(searchDebounce);
+    renderClientList(allClients);
+    document.getElementById('clientList').scrollTop = 0;
+    input.focus();
+  });
+
+  document.getElementById('sidebarToggle').addEventListener('click', function () {
+    document.querySelector('.shell').classList.toggle('sidebar-collapsed');
   });
 
   // ---------- client detail ----------

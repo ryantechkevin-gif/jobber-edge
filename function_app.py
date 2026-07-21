@@ -1,6 +1,8 @@
 import json
 import os
 import sys
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
@@ -23,8 +25,18 @@ _STATIC_DIR = os.path.join(os.path.dirname(__file__), "src", "jobber_monitor", "
 # own JS reuses for the /api/jobber/query calls it makes after loading.
 @app.route(route="dashboard", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
 def dashboard_http(req: func.HttpRequest) -> func.HttpResponse:
-    with open(os.path.join(_STATIC_DIR, "dashboard.html"), "r", encoding="utf-8") as f:
+    dashboard_path = os.path.join(_STATIC_DIR, "dashboard.html")
+    with open(dashboard_path, "r", encoding="utf-8") as f:
         html = f.read()
+
+    # File mtimes get reset to extraction time on every deploy (Azure
+    # unzips the artifact fresh each time), so this doubles as a "last
+    # deployed" stamp with zero manual bookkeeping -- shown in Arizona
+    # time since that's where WeSpeakWiFi operates.
+    deployed_at = datetime.fromtimestamp(os.path.getmtime(dashboard_path), tz=ZoneInfo("America/Phoenix"))
+    build_stamp = deployed_at.strftime("Deployed %b %d, %Y · %-I:%M %p MST")
+    html = html.replace("{{BUILD_STAMP}}", build_stamp)
+
     return func.HttpResponse(html, mimetype="text/html; charset=utf-8")
 
 
