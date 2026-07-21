@@ -28,4 +28,7 @@ def build_weekly_report_message(report: Dict[str, Any]) -> str:
     for status, count in sorted(report["quote_breakdown"]["counts"].items()):
         lines.append(f"  - {status}: {count}")
 
+    lines.append("")
+    lines.append("_-- Kook \U0001F916 (Claude-powered, not Kevin)_")
+
     return "\n".join(lines)
