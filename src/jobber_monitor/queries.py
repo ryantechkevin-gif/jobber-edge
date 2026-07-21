@@ -53,7 +53,68 @@ query InvoicesPage($first: Int!, $after: String) {
       invoiceNumber
       invoiceStatus
       createdAt
+      issuedDate
+      dueDate
+      subject
+      jobberWebUri
+      client { id name companyName }
+      jobs(first: 5) {
+        nodes { id jobType jobStatus title }
+      }
       amounts { total invoiceBalance }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+"""
+
+# Every client with jobs AND properties/custom fields attached in one
+# paginated pass -- the single query the ask.py toolbelt fetches to
+# answer any question about recurring billing or about a named
+# service/ISP/keyword (e.g. "Quantum Fiber"). Filtering happens in
+# Python rather than via Jobber's own clients(searchTerm, searchFields)
+# args: a live check found that CUSTOM_FIELDS/PROPERTIES search scope
+# does NOT reliably reach property-level custom field values (a known
+# real value there came back with zero matches), so property custom
+# fields -- confirmed via CLIENT_DASHBOARD_QUERY as the real source of
+# ISP/network info -- are fetched directly and matched ourselves instead
+# of trusted to Jobber's search.
+CLIENTS_FULL_QUERY = """
+query ClientsFull($first: Int!, $after: String) {
+  clients(first: $first, after: $after) {
+    nodes {
+      id
+      name
+      companyName
+      isArchived
+      clientProperties(first: 10) {
+        nodes {
+          id
+          name
+          address { street city province postalCode }
+          customFields {
+            __typename
+            ... on CustomFieldText { label valueText }
+            ... on CustomFieldDropdown { label valueDropdown }
+          }
+        }
+      }
+      jobs(first: 20) {
+        nodes {
+          id
+          jobNumber
+          title
+          jobType
+          jobStatus
+          total
+          invoicedTotal
+          uninvoicedTotal
+          startAt
+          endAt
+          completedAt
+          jobberWebUri
+        }
+      }
     }
     pageInfo { hasNextPage endCursor }
   }

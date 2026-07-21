@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 import azure.functions as func
 
 from jobber_monitor import oauth
+from jobber_monitor.ask import ask as ask_question
 from jobber_monitor.jobber_client import execute
 from jobber_monitor.queries import ACCOUNT_QUERY, INTROSPECT_TYPE_QUERY
 from jobber_monitor.main import run as weekly_report_run
@@ -153,6 +154,23 @@ def jobber_client_http(req: func.HttpRequest) -> func.HttpResponse:
     except RuntimeError as exc:
         return func.HttpResponse(str(exc), status_code=400)
     return func.HttpResponse(json.dumps(data), mimetype="application/json; charset=utf-8")
+
+
+# The "ask a question" feature: GET /api/jobber/ask?q=<url-encoded question>
+# hands the question to Claude along with a small fixed toolbelt of
+# read-only Jobber lookups (see ask.py) -- it can never run arbitrary
+# GraphQL or a mutation, only those specific safe queries, no matter what's
+# typed in. Requires ANTHROPIC_API_KEY as a Function App setting.
+@app.route(route="jobber/ask", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
+def jobber_ask_http(req: func.HttpRequest) -> func.HttpResponse:
+    question = req.params.get("q")
+    if not question:
+        return func.HttpResponse("Missing required query param: q (a plain-English question)", status_code=400)
+    try:
+        result = ask_question(question)
+    except RuntimeError as exc:
+        return func.HttpResponse(str(exc), status_code=400)
+    return func.HttpResponse(json.dumps(result), mimetype="application/json; charset=utf-8")
 
 
 # On-demand: build (and optionally post) the weekly report right now,
