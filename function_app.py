@@ -14,6 +14,19 @@ from jobber_monitor.report import fetch_client_dashboard
 
 app = func.FunctionApp()
 
+_STATIC_DIR = os.path.join(os.path.dirname(__file__), "src", "jobber_monitor", "static")
+
+
+# The actual browsable client dashboard -- a client picker (search-as-you-type
+# over every client) plus the same per-client rollup as /api/jobber/client,
+# rendered live in the browser. Requires the function key (?code=), which its
+# own JS reuses for the /api/jobber/query calls it makes after loading.
+@app.route(route="dashboard", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
+def dashboard_http(req: func.HttpRequest) -> func.HttpResponse:
+    with open(os.path.join(_STATIC_DIR, "dashboard.html"), "r", encoding="utf-8") as f:
+        html = f.read()
+    return func.HttpResponse(html, mimetype="text/html; charset=utf-8")
+
 
 # One-time (or re-authorization) step: hit this with the function key to
 # start Jobber's OAuth consent screen. Requires the function key since it
@@ -79,7 +92,7 @@ def jobber_schema(req: func.HttpRequest) -> func.HttpResponse:
         data = execute(INTROSPECT_TYPE_QUERY, {"name": type_name})
     except RuntimeError as exc:
         return func.HttpResponse(str(exc), status_code=400)
-    return func.HttpResponse(str(data), mimetype="application/json; charset=utf-8")
+    return func.HttpResponse(json.dumps(data), mimetype="application/json; charset=utf-8")
 
 
 # Ad-hoc GraphQL console: GET /api/jobber/query?q=<url-encoded query>
@@ -111,7 +124,7 @@ def jobber_query_http(req: func.HttpRequest) -> func.HttpResponse:
         data = execute(query, variables)
     except RuntimeError as exc:
         return func.HttpResponse(str(exc), status_code=400)
-    return func.HttpResponse(str(data), mimetype="application/json; charset=utf-8")
+    return func.HttpResponse(json.dumps(data), mimetype="application/json; charset=utf-8")
 
 
 # Everything about one client in a single call -- identity, tags, notes,
@@ -127,7 +140,7 @@ def jobber_client_http(req: func.HttpRequest) -> func.HttpResponse:
         data = fetch_client_dashboard(client_id)
     except RuntimeError as exc:
         return func.HttpResponse(str(exc), status_code=400)
-    return func.HttpResponse(str(data), mimetype="application/json; charset=utf-8")
+    return func.HttpResponse(json.dumps(data), mimetype="application/json; charset=utf-8")
 
 
 # On-demand: build (and optionally post) the weekly report right now,

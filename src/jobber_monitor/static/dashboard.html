@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeSpeakWiFi — Client Dashboard</title>
+<style>
+  :root {
+    --bg: #10141b;
+    --surface: #1a2029;
+    --surface-2: #222937;
+    --border: #2b3341;
+    --text: #e9ecf1;
+    --text-dim: #8b95a5;
+    --text-faint: #5f6979;
+    --accent: #4dc2d4;
+    --accent-soft: rgba(77, 194, 212, 0.14);
+    --good: #5fb87a;
+    --good-soft: rgba(95, 184, 122, 0.14);
+    --warning: #e0a83e;
+    --warning-soft: rgba(224, 168, 62, 0.14);
+    --critical: #e2645f;
+    --critical-soft: rgba(226, 100, 95, 0.14);
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -12px rgba(0,0,0,0.5);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f3f5f7; --surface: #ffffff; --surface-2: #eceff3; --border: #dde2e8;
+      --text: #161b22; --text-dim: #596475; --text-faint: #8892a0;
+      --accent: #0e7f90; --accent-soft: rgba(14, 127, 144, 0.09);
+      --good: #2e8b52; --good-soft: rgba(46, 139, 82, 0.1);
+      --warning: #b5790f; --warning-soft: rgba(181, 121, 15, 0.1);
+      --critical: #c4433d; --critical-soft: rgba(196, 67, 61, 0.1);
+      --shadow: 0 1px 2px rgba(20,30,40,0.06), 0 8px 20px -12px rgba(20,30,40,0.12);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10141b; --surface: #1a2029; --surface-2: #222937; --border: #2b3341;
+    --text: #e9ecf1; --text-dim: #8b95a5; --text-faint: #5f6979;
+    --accent: #4dc2d4; --accent-soft: rgba(77, 194, 212, 0.14);
+    --good: #5fb87a; --good-soft: rgba(95, 184, 122, 0.14);
+    --warning: #e0a83e; --warning-soft: rgba(224, 168, 62, 0.14);
+    --critical: #e2645f; --critical-soft: rgba(226, 100, 95, 0.14);
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -12px rgba(0,0,0,0.5);
+  }
+  :root[data-theme="light"] {
+    --bg: #f3f5f7; --surface: #ffffff; --surface-2: #eceff3; --border: #dde2e8;
+    --text: #161b22; --text-dim: #596475; --text-faint: #8892a0;
+    --accent: #0e7f90; --accent-soft: rgba(14, 127, 144, 0.09);
+    --good: #2e8b52; --good-soft: rgba(46, 139, 82, 0.1);
+    --warning: #b5790f; --warning-soft: rgba(181, 121, 15, 0.1);
+    --critical: #c4433d; --critical-soft: rgba(196, 67, 61, 0.1);
+    --shadow: 0 1px 2px rgba(20,30,40,0.06), 0 8px 20px -12px rgba(20,30,40,0.12);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; line-height: 1.45;
+  }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-variant-numeric: tabular-nums; }
+  a { color: inherit; }
+
+  /* ---- shell: sidebar + main ---- */
+  .shell { display: flex; min-height: 100vh; }
+
+  .sidebar {
+    width: 280px; flex-shrink: 0; border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; background: var(--surface);
+  }
+  .sidebar-head { padding: 18px 16px 12px; border-bottom: 1px solid var(--border); }
+  .sidebar-head .brand { font-size: 13px; font-weight: 700; letter-spacing: 0.02em; margin: 0 0 2px; }
+  .sidebar-head .sub { font-size: 11.5px; color: var(--text-faint); margin: 0; }
+
+  .search-box { padding: 12px 12px 8px; }
+  .search-box input {
+    width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--text); font-size: 13px; font-family: inherit;
+  }
+  .search-box input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .client-list { flex: 1; overflow-y: auto; padding: 4px 8px 16px; }
+  .client-item {
+    display: block; width: 100%; text-align: left; padding: 9px 10px; border-radius: 8px;
+    border: none; background: none; color: var(--text); font-family: inherit; font-size: 13px;
+    cursor: pointer;
+  }
+  .client-item:hover { background: var(--surface-2); }
+  .client-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .client-item .ci-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .client-item .ci-sub { display: block; font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+  .client-item.active .ci-sub { color: var(--accent); opacity: 0.75; }
+
+  .list-status { padding: 12px; font-size: 12.5px; color: var(--text-faint); }
+
+  /* ---- main ---- */
+  .main { flex: 1; min-width: 0; overflow-y: auto; }
+  .page { max-width: 1080px; margin: 0 auto; padding: 28px 24px 64px; }
+
+  .placeholder {
+    display: flex; align-items: center; justify-content: center; height: 100%;
+    color: var(--text-faint); font-size: 14px; padding: 64px 24px; text-align: center;
+  }
+
+  /* ---- masthead ---- */
+  .masthead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+  .identity .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-faint); margin: 0 0 8px; }
+  .identity h1 { font-size: 34px; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 6px; text-wrap: balance; }
+  .identity .subline { color: var(--text-dim); font-size: 15px; margin: 0 0 14px; }
+  .contact-row { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13.5px; color: var(--text-dim); }
+  .contact-row a { text-decoration: none; }
+  .contact-row a:hover { color: var(--accent); }
+  .status-chips { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--surface-2); color: var(--text-dim); border: 1px solid var(--border); }
+  .chip.good { background: var(--good-soft); color: var(--good); border-color: transparent; }
+  .chip.accent { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+  .chip.warning { background: var(--warning-soft); color: var(--warning); border-color: transparent; }
+
+  .balance-block { text-align: right; min-width: 200px; }
+  .balance-block .label { font-size: 12px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-faint); margin: 0 0 6px; }
+  .balance-block .amount { font-size: 32px; font-weight: 800; }
+  .balance-block .amount.zero { color: var(--good); }
+  .balance-block .amount.owed { color: var(--warning); }
+  .jobber-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 13px; font-weight: 600; color: var(--accent); text-decoration: none; padding: 7px 12px; border-radius: 8px; background: var(--accent-soft); }
+  .jobber-link:hover { filter: brightness(1.08); }
+
+  /* ---- stat row ---- */
+  .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin: 24px 0 32px; }
+  .stat { background: var(--surface); padding: 16px 18px; }
+  .stat .stat-label { font-size: 11.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); margin: 0 0 8px; }
+  .stat .stat-value { font-size: 22px; font-weight: 700; }
+  .stat .stat-sub { font-size: 12px; color: var(--text-faint); margin-top: 4px; }
+
+  /* ---- section grid ---- */
+  .grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } .stat-row { grid-template-columns: repeat(2, 1fr); } }
+  .col { display: flex; flex-direction: column; gap: 20px; }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+  .panel-head { display: flex; align-items: baseline; justify-content: space-between; padding: 16px 18px 12px; }
+  .panel-head h2 { font-size: 14px; font-weight: 700; letter-spacing: 0.02em; margin: 0; }
+  .panel-head .count-note { font-size: 11.5px; color: var(--text-faint); }
+  .panel-body { padding: 0 18px 16px; }
+
+  .job-row { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid var(--border); text-decoration: none; color: inherit; }
+  .job-row:first-child { border-top: none; }
+  .job-num { font-size: 12px; color: var(--text-faint); min-width: 34px; }
+  .job-title { font-size: 13.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .job-title .untitled { color: var(--text-faint); font-style: italic; font-weight: 400; }
+  .job-type { font-size: 11px; color: var(--text-faint); }
+  .job-amount { font-size: 13px; font-weight: 600; text-align: right; min-width: 64px; }
+
+  .pill { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
+  .pill.st-good { background: var(--good-soft); color: var(--good); }
+  .pill.st-neutral { background: var(--surface-2); color: var(--text-faint); }
+  .pill.st-accent { background: var(--accent-soft); color: var(--accent); }
+  .pill.st-warning { background: var(--warning-soft); color: var(--warning); }
+
+  table.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.data-table td { padding: 8px 0; border-top: 1px solid var(--border); vertical-align: top; }
+  table.data-table tr:first-child td { border-top: none; }
+  table.data-table .col-num { color: var(--text-dim); width: 1%; white-space: nowrap; padding-right: 12px; }
+  table.data-table .col-date { color: var(--text-faint); font-size: 12px; white-space: nowrap; }
+  table.data-table .col-amount { text-align: right; font-weight: 600; white-space: nowrap; }
+  .table-scroll { overflow-x: auto; }
+
+  .kv-row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 13px; }
+  .kv-row:first-child { border-top: none; }
+  .kv-row .k { color: var(--text-faint); }
+  .kv-row .v { text-align: right; }
+
+  .empty-state { padding: 18px 0; color: var(--text-faint); font-size: 13px; font-style: italic; }
+  .quote-message { font-size: 12.5px; color: var(--text-dim); margin: 8px 0 0; padding: 10px 12px; background: var(--surface-2); border-radius: 8px; border-left: 2px solid var(--accent); }
+  .property-block + .property-block { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .property-block .prop-heading { font-size: 12px; font-weight: 700; color: var(--text-dim); margin-bottom: 6px; }
+
+  footer.source-note { margin-top: 32px; font-size: 12px; color: var(--text-faint); text-align: center; }
+
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <p class="brand">WeSpeakWiFi</p>
+      <p class="sub">Client dashboard · live via jobber-edge</p>
+    </div>
+    <div class="search-box">
+      <input type="text" id="search" placeholder="Search clients…" autocomplete="off">
+    </div>
+    <div id="clientList" class="client-list">
+      <div class="list-status"><span class="spinner"></span>Loading clients…</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div id="content" class="page">
+      <div class="placeholder">Select a client from the list to see their full record.</div>
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var CODE = params.get('code') || '';
+  var qs = CODE ? ('?code=' + encodeURIComponent(CODE)) : '';
+
+  var allClients = [];
+  var activeId = null;
+
+  function gql(query, variables) {
+    var url = '/api/jobber/query' + qs + '&q=' + encodeURIComponent(query) +
+      (variables ? '&vars=' + encodeURIComponent(JSON.stringify(variables)) : '');
+    return fetch(url).then(function (r) {
+      if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
+      return r.json();
+    });
+  }
+
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = (s === null || s === undefined) ? '' : String(s);
+    return d.innerHTML;
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    var d = new Date(iso);
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  function fmtMoney(n) {
+    if (n === null || n === undefined) return '—';
+    return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function statusPillClass(status) {
+    var s = (status || '').toLowerCase();
+    if (['active', 'paid', 'converted', 'complete'].indexOf(s) !== -1) return 'st-good';
+    if (['archived', 'closed', 'expired'].indexOf(s) !== -1) return 'st-neutral';
+    if (['draft', 'awaiting_response', 'awaiting_payment', 'pending'].indexOf(s) !== -1) return 'st-warning';
+    return 'st-accent';
+  }
+
+  function statusLabel(status) {
+    if (!status) return 'Unknown';
+    return status.replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
+
+  // ---------- client list ----------
+
+  function loadClients() {
+    var listEl = document.getElementById('clientList');
+    var query = 'query ClientList($first: Int!, $after: String) { clients(first: $first, after: $after) { nodes { id name companyName isArchived isLead } pageInfo { hasNextPage endCursor } } }';
+
+    function fetchPage(after, acc) {
+      return gql(query, { first: 100, after: after }).then(function (data) {
+        var conn = data.clients;
+        acc = acc.concat(conn.nodes);
+        if (conn.pageInfo.hasNextPage && acc.length < 1000) {
+          return fetchPage(conn.pageInfo.endCursor, acc);
+        }
+        return acc;
+      });
+    }
+
+    fetchPage(null, []).then(function (clients) {
+      allClients = clients.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
+      renderClientList(allClients);
+    }).catch(function (err) {
+      listEl.innerHTML = '<div class="list-status">Couldn\'t load clients.<br><span class="mono" style="font-size:11px;">' + esc(err.message).slice(0, 300) + '</span></div>';
+    });
+  }
+
+  function renderClientList(clients) {
+    var listEl = document.getElementById('clientList');
+    if (!clients.length) {
+      listEl.innerHTML = '<div class="list-status">No clients match.</div>';
+      return;
+    }
+    listEl.innerHTML = clients.map(function (c) {
+      var sub = [];
+      if (c.companyName) sub.push(c.companyName);
+      if (c.isLead) sub.push('Lead');
+      if (c.isArchived) sub.push('Archived');
+      var activeClass = c.id === activeId ? ' active' : '';
+      return '<button class="client-item' + activeClass + '" data-id="' + esc(c.id) + '">' +
+        '<span class="ci-name">' + esc(c.name) + '</span>' +
+        (sub.length ? '<span class="ci-sub">' + esc(sub.join(' · ')) + '</span>' : '') +
+        '</button>';
+    }).join('');
+
+    Array.prototype.forEach.call(listEl.querySelectorAll('.client-item'), function (btn) {
+      btn.addEventListener('click', function () { selectClient(btn.getAttribute('data-id')); });
+    });
+  }
+
+  document.getElementById('search').addEventListener('input', function (e) {
+    var term = e.target.value.trim().toLowerCase();
+    if (!term) { renderClientList(allClients); return; }
+    renderClientList(allClients.filter(function (c) {
+      return c.name.toLowerCase().indexOf(term) !== -1 ||
+        (c.companyName || '').toLowerCase().indexOf(term) !== -1;
+    }));
+  });
+
+  // ---------- client detail ----------
+
+  var DASHBOARD_QUERY = "query ClientDashboard($id: EncodedId!) { client(id: $id) { id name firstName lastName companyName isCompany isLead isArchived balance createdAt updatedAt email phone jobberWebUri tags(first: 20) { nodes { id label } } notes(first: 10) { nodes { id message pinned createdAt } } clientProperties(first: 10) { nodes { id name jobberWebUri address { street city province postalCode } customFields { __typename ... on CustomFieldText { label valueText } ... on CustomFieldDropdown { label valueDropdown } } } } jobs(first: 10) { nodes { id jobNumber title jobStatus jobType total invoicedTotal uninvoicedTotal startAt endAt completedAt jobberWebUri } } quotes(first: 10) { nodes { id quoteNumber title quoteStatus message sentAt jobberWebUri amounts { total } } } invoices(first: 10) { nodes { id invoiceNumber invoiceStatus subject message issuedDate dueDate jobberWebUri amounts { total invoiceBalance } } } requests(first: 10) { nodes { id requestStatus title createdAt jobberWebUri } } } }";
+
+  function selectClient(id) {
+    activeId = id;
+    renderClientList(currentFilteredList());
+    var content = document.getElementById('content');
+    content.innerHTML = '<div class="placeholder"><span class="spinner"></span>Loading client…</div>';
+
+    gql(DASHBOARD_QUERY, { id: id }).then(function (data) {
+      renderClient(data.client);
+    }).catch(function (err) {
+      content.innerHTML = '<div class="placeholder">Couldn\'t load this client.<br><span class="mono" style="font-size:12px;">' + esc(err.message).slice(0, 400) + '</span></div>';
+    });
+  }
+
+  function currentFilteredList() {
+    var term = document.getElementById('search').value.trim().toLowerCase();
+    if (!term) return allClients;
+    return allClients.filter(function (c) {
+      return c.name.toLowerCase().indexOf(term) !== -1 ||
+        (c.companyName || '').toLowerCase().indexOf(term) !== -1;
+    });
+  }
+
+  function renderClient(c) {
+    var content = document.getElementById('content');
+
+    var chips = [];
+    if (!c.isArchived && hasActiveJob(c)) chips.push('<span class="chip good">● Active job on file</span>');
+    if (c.isLead) chips.push('<span class="chip accent">Lead</span>');
+    if (c.isArchived) chips.push('<span class="chip warning">Archived</span>');
+    chips.push('<span class="chip">' + (c.isCompany ? 'Company account' : 'Individual account') + '</span>');
+
+    var balanceClass = (c.balance && c.balance !== 0) ? 'owed' : 'zero';
+
+    var html = '';
+    html += '<div class="masthead">';
+    html += '  <div class="identity">';
+    html += '    <p class="eyebrow">Client dashboard</p>';
+    html += '    <h1>' + esc(c.name) + '</h1>';
+    html += '    <p class="subline">' + (c.companyName ? esc(c.companyName) + ' &nbsp;·&nbsp; ' : '') + 'Client since ' + fmtDate(c.createdAt) + '</p>';
+    html += '    <div class="contact-row">';
+    if (c.email) html += '<a href="mailto:' + esc(c.email) + '">' + esc(c.email) + '</a>';
+    if (c.phone) html += '<span class="mono">' + esc(c.phone) + '</span>';
+    html += '    </div>';
+    html += '    <div class="status-chips">' + chips.join('') + '</div>';
+    html += '  </div>';
+    html += '  <div class="balance-block">';
+    html += '    <p class="label">Current balance</p>';
+    html += '    <div class="amount ' + balanceClass + ' mono">' + fmtMoney(c.balance) + '</div>';
+    html += '    <a class="jobber-link" href="' + esc(c.jobberWebUri) + '" target="_blank" rel="noopener">Open in Jobber ↗</a>';
+    html += '  </div>';
+    html += '</div>';
+
+    html += renderStatRow(c);
+
+    html += '<div class="grid"><div class="col">';
+    html += renderJobs(c.jobs.nodes);
+    html += renderInvoices(c.invoices.nodes);
+    html += '</div><div class="col">';
+    html += renderProperties(c.clientProperties.nodes);
+    html += renderQuotes(c.quotes.nodes);
+    html += renderRequests(c.requests.nodes);
+    html += renderNotes(c.notes.nodes);
+    html += '</div></div>';
+
+    html += '<footer class="source-note">Live from Jobber via jobber-edge · client id ' + esc(c.id.slice(0, 24)) + '…</footer>';
+
+    content.innerHTML = html;
+  }
+
+  function hasActiveJob(c) {
+    return c.jobs.nodes.some(function (j) { return (j.jobStatus || '').toLowerCase() === 'active'; });
+  }
+
+  function renderStatRow(c) {
+    var activeJobs = c.jobs.nodes.filter(function (j) { return (j.jobStatus || '').toLowerCase() === 'active'; }).length;
+    var invoiceTotal = c.invoices.nodes.reduce(function (sum, i) { return sum + ((i.amounts && i.amounts.total) || 0); }, 0);
+    var recurring = c.jobs.nodes.find(function (j) { return j.jobType === 'RECURRING' && (j.jobStatus || '').toLowerCase() === 'active'; });
+
+    return '<div class="stat-row">' +
+      '<div class="stat"><p class="stat-label">Active jobs</p><div class="stat-value">' + activeJobs + '</div><p class="stat-sub">of ' + c.jobs.nodes.length + ' shown</p></div>' +
+      '<div class="stat"><p class="stat-label">Billed, invoices shown</p><div class="stat-value">' + fmtMoney(invoiceTotal) + '</div><p class="stat-sub">' + c.invoices.nodes.length + ' invoice(s)</p></div>' +
+      '<div class="stat"><p class="stat-label">Recurring service</p><div class="stat-value">' + (recurring ? fmtMoney(recurring.total) + '<span style="font-size:13px;color:var(--text-faint);font-weight:500;">/mo</span>' : '—') + '</div><p class="stat-sub">' + (recurring ? esc(recurring.title || '') : 'none active') + '</p></div>' +
+      '<div class="stat"><p class="stat-label">Properties</p><div class="stat-value">' + c.clientProperties.nodes.length + '</div><p class="stat-sub">on file</p></div>' +
+      '</div>';
+  }
+
+  function panel(title, countNote, bodyHtml) {
+    return '<section class="panel"><div class="panel-head"><h2>' + esc(title) + '</h2>' +
+      (countNote ? '<span class="count-note">' + esc(countNote) + '</span>' : '') +
+      '</div><div class="panel-body">' + bodyHtml + '</div></section>';
+  }
+
+  function renderJobs(jobs) {
+    if (!jobs.length) return panel('Jobs', null, '<div class="empty-state">No jobs on file.</div>');
+    var rows = jobs.map(function (j) {
+      var titleHtml = j.title ? esc(j.title) : '<span class="untitled">Untitled job</span>';
+      var typeLabel = j.jobType === 'RECURRING' ? 'Recurring' : 'One-off';
+      var dateRange = j.startAt ? fmtDate(j.startAt) : '';
+      return '<a class="job-row" href="' + esc(j.jobberWebUri) + '" target="_blank" rel="noopener">' +
+        '<span class="job-num mono">#' + esc(j.jobNumber) + '</span>' +
+        '<span class="job-title">' + titleHtml + '<br><span class="job-type">' + typeLabel + (dateRange ? ' · ' + dateRange : '') + '</span></span>' +
+        '<span class="pill ' + statusPillClass(j.jobStatus) + '">' + esc(statusLabel(j.jobStatus)) + '</span>' +
+        '<span class="job-amount mono">' + fmtMoney(j.invoicedTotal) + '</span>' +
+        '</a>';
+    }).join('');
+    return panel('Jobs', jobs.length + ' shown', rows);
+  }
+
+  function renderInvoices(invoices) {
+    if (!invoices.length) return panel('Invoices', null, '<div class="empty-state">No invoices on file.</div>');
+    var rows = invoices.map(function (i) {
+      return '<tr>' +
+        '<td class="col-num mono">#' + esc(i.invoiceNumber) + '</td>' +
+        '<td class="col-date">' + fmtDate(i.issuedDate) + '</td>' +
+        '<td><span class="pill ' + statusPillClass(i.invoiceStatus) + '">' + esc(statusLabel(i.invoiceStatus)) + '</span></td>' +
+        '<td class="col-amount mono">' + fmtMoney(i.amounts && i.amounts.total) + '</td>' +
+        '</tr>';
+    }).join('');
+    return panel('Invoices', invoices.length + ' shown', '<div class="table-scroll"><table class="data-table"><tbody>' + rows + '</tbody></table></div>');
+  }
+
+  function renderProperties(props) {
+    if (!props.length) return panel('Properties', null, '<div class="empty-state">No properties on file.</div>');
+    var blocks = props.map(function (p) {
+      var addr = p.address ? [p.address.street, [p.address.city, p.address.province].filter(Boolean).join(', '), p.address.postalCode].filter(Boolean).join('<br>') : '—';
+      var fields = (p.customFields || []).filter(function (f) {
+        var v = f.valueText !== undefined ? f.valueText : f.valueDropdown;
+        return v !== undefined && v !== null && v !== '';
+      }).map(function (f) {
+        var v = f.valueText !== undefined ? f.valueText : f.valueDropdown;
+        return '<div class="kv-row"><span class="k">' + esc(f.label) + '</span><span class="v mono">' + esc(v) + '</span></div>';
+      }).join('');
+      return '<div class="property-block">' +
+        '<p class="prop-heading">' + esc(p.name || addr.split('<br>')[0] || 'Property') + '</p>' +
+        '<div class="kv-row"><span class="k">Address</span><span class="v">' + (addr || '—') + '</span></div>' +
+        '<div class="kv-row"><span class="k">Jobber record</span><span class="v"><a href="' + esc(p.jobberWebUri) + '" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">Open ↗</a></span></div>' +
+        fields +
+        '</div>';
+    }).join('');
+    return panel('Properties', props.length + ' shown', blocks);
+  }
+
+  function renderQuotes(quotes) {
+    if (!quotes.length) return panel('Quotes', null, '<div class="empty-state">No quotes on file.</div>');
+    var blocks = quotes.map(function (q) {
+      return '<div class="kv-row"><span class="k">#' + esc(q.quoteNumber) + (q.title ? ' · ' + esc(q.title) : '') + '</span><span class="v pill ' + statusPillClass(q.quoteStatus) + '">' + esc(statusLabel(q.quoteStatus)) + '</span></div>' +
+        '<div class="kv-row"><span class="k">Amount</span><span class="v mono">' + fmtMoney(q.amounts && q.amounts.total) + '</span></div>' +
+        '<div class="kv-row"><span class="k">Sent</span><span class="v">' + fmtDate(q.sentAt) + '</span></div>' +
+        (q.message ? '<p class="quote-message">"' + esc(q.message) + '"</p>' : '');
+    }).join('<div style="height:14px;"></div>');
+    return panel('Quotes', quotes.length + ' shown', blocks);
+  }
+
+  function renderRequests(requests) {
+    if (!requests.length) return panel('Requests', null, '<div class="empty-state">No requests on file.</div>');
+    var rows = requests.map(function (r) {
+      return '<div class="kv-row"><span class="k">' + esc(r.title || 'Untitled request') + '</span><span class="v pill ' + statusPillClass(r.requestStatus) + '">' + esc(statusLabel(r.requestStatus)) + '</span></div>' +
+        '<div class="kv-row"><span class="k">Received</span><span class="v">' + fmtDate(r.createdAt) + '</span></div>';
+    }).join('<div style="height:10px;"></div>');
+    return panel('Requests', requests.length + ' shown', rows);
+  }
+
+  function renderNotes(notes) {
+    if (!notes.length) return panel('Notes', null, '<div class="empty-state">No notes on file.</div>');
+    var rows = notes.map(function (n) {
+      return '<div class="kv-row" style="align-items:flex-start;"><span class="k" style="white-space:nowrap;">' + fmtDate(n.createdAt) + '</span><span class="v" style="text-align:left;white-space:pre-line;">' + esc(n.message) + '</span></div>';
+    }).join('');
+    return panel('Notes', notes.length + ' shown', rows);
+  }
+
+  loadClients();
+})();
+</script>
+</body>
+</html>
