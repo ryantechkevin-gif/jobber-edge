@@ -84,6 +84,28 @@
   }
   .search-box input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+  /* ---- PII toggle: blurred by default everywhere (sidebar list + detail
+     view), one control reveals everything at once. Filtering/search still
+     works correctly while hidden since it runs against the underlying
+     data, not the rendered text. ---- */
+  .pii-toggle {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    margin: 2px 12px 4px; padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface-2);
+    color: var(--text-dim); font-family: inherit; font-size: 12.5px; font-weight: 600;
+    cursor: pointer; width: calc(100% - 24px);
+  }
+  .pii-toggle:hover { filter: brightness(1.08); }
+  .pii-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .pii-toggle.exposed { background: var(--warning-soft); color: var(--warning); border-color: transparent; }
+
+  body.pii-hidden .pii-field {
+    filter: blur(6px);
+    user-select: none;
+    transition: filter 0.12s ease;
+  }
+  body.pii-visible .pii-field { filter: none; user-select: text; }
+
   .client-list { flex: 1; overflow-y: auto; padding: 4px 8px 16px; }
   .client-item {
     display: block; width: 100%; text-align: left; padding: 9px 10px; border-radius: 8px;
@@ -222,7 +244,7 @@
   @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
 </style>
 </head>
-<body>
+<body class="pii-hidden">
 
 <div class="shell">
   <aside class="sidebar">
@@ -232,6 +254,7 @@
       </div>
       <p class="sub">Client dashboard · live via jobber-edge</p>
     </div>
+    <button type="button" id="piiToggle" class="pii-toggle">🔒 PII hidden — click to reveal</button>
     <div class="search-box">
       <input type="text" id="search" placeholder="Search clients…" autocomplete="off">
     </div>
@@ -255,6 +278,15 @@
 
   var allClients = [];
   var activeId = null;
+
+  var piiToggleBtn = document.getElementById('piiToggle');
+  piiToggleBtn.addEventListener('click', function () {
+    var hidden = document.body.classList.contains('pii-hidden');
+    document.body.classList.toggle('pii-hidden', !hidden);
+    document.body.classList.toggle('pii-visible', hidden);
+    piiToggleBtn.textContent = hidden ? '🔓 PII visible — click to hide' : '🔒 PII hidden — click to reveal';
+    piiToggleBtn.classList.toggle('exposed', hidden);
+  });
 
   function gql(query, variables) {
     var url = '/api/jobber/query' + qs + '&q=' + encodeURIComponent(query) +
@@ -343,14 +375,16 @@
       return;
     }
     listEl.innerHTML = clients.map(function (c) {
-      var sub = [];
-      if (c.companyName) sub.push(c.companyName);
-      if (c.isLead) sub.push('Lead');
-      if (c.isArchived) sub.push('Archived');
+      var flags = [];
+      if (c.isLead) flags.push('Lead');
+      if (c.isArchived) flags.push('Archived');
+      var sub = (c.companyName ? '<span class="pii-field">' + esc(c.companyName) + '</span>' : '') +
+        (c.companyName && flags.length ? ' · ' : '') +
+        (flags.length ? esc(flags.join(' · ')) : '');
       var activeClass = c.id === activeId ? ' active' : '';
       return '<button class="client-item' + activeClass + '" data-id="' + esc(c.id) + '">' +
-        '<span class="ci-name">' + esc(c.name) + '</span>' +
-        (sub.length ? '<span class="ci-sub">' + esc(sub.join(' · ')) + '</span>' : '') +
+        '<span class="ci-name pii-field">' + esc(c.name) + '</span>' +
+        (sub ? '<span class="ci-sub">' + sub + '</span>' : '') +
         '</button>';
     }).join('');
 
@@ -409,11 +443,11 @@
     html += '<div class="masthead">';
     html += '  <div class="identity">';
     html += '    <p class="eyebrow">Client dashboard</p>';
-    html += '    <h1>' + esc(c.name) + '</h1>';
-    html += '    <p class="subline">' + (c.companyName ? esc(c.companyName) + ' &nbsp;·&nbsp; ' : '') + 'Client since ' + fmtDate(c.createdAt) + '</p>';
+    html += '    <h1><span class="pii-field">' + esc(c.name) + '</span></h1>';
+    html += '    <p class="subline">' + (c.companyName ? '<span class="pii-field">' + esc(c.companyName) + '</span> &nbsp;·&nbsp; ' : '') + 'Client since ' + fmtDate(c.createdAt) + '</p>';
     html += '    <div class="contact-row">';
-    if (c.email) html += '<a href="mailto:' + esc(c.email) + '">' + esc(c.email) + '</a>';
-    if (c.phone) html += '<span class="mono">' + esc(c.phone) + '</span>';
+    if (c.email) html += '<a class="pii-field" href="mailto:' + esc(c.email) + '">' + esc(c.email) + '</a>';
+    if (c.phone) html += '<span class="pii-field mono">' + esc(c.phone) + '</span>';
     html += '    </div>';
     html += '    <div class="status-chips">' + chips.join('') + '</div>';
     html += '  </div>';
@@ -505,8 +539,8 @@
         return '<div class="kv-row"><span class="k">' + esc(f.label) + '</span><span class="v mono">' + esc(v) + '</span></div>';
       }).join('');
       return '<div class="property-block">' +
-        '<p class="prop-heading">' + esc(p.name || addr.split('<br>')[0] || 'Property') + '</p>' +
-        '<div class="kv-row"><span class="k">Address</span><span class="v">' + (addr || '—') + '</span></div>' +
+        '<p class="prop-heading pii-field">' + esc(p.name || addr.split('<br>')[0] || 'Property') + '</p>' +
+        '<div class="kv-row"><span class="k">Address</span><span class="v pii-field">' + (addr || '—') + '</span></div>' +
         '<div class="kv-row"><span class="k">Jobber record</span><span class="v"><a href="' + esc(p.jobberWebUri) + '" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">Open ↗</a></span></div>' +
         fields +
         '</div>';
