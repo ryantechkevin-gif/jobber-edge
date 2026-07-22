@@ -69,6 +69,23 @@ _cache: Dict[str, Any] = {"clients_full": None, "clients_full_at": 0.0}
 _CACHE_TTL_SECONDS = 60
 
 
+# TODO (picked back up later, not yet acted on): live introspection of the
+# Query root type (2026-07-21) showed a `jobs` field DOES exist at the root
+# -- CLIENTS_FULL_QUERY below was written on the earlier (wrong) assumption
+# that jobs are only reachable nested under a client, which still works but
+# may be doing more round trips than necessary. Before switching anything
+# over to a root-level `jobs()` query, still need to:
+#   1. Introspect the `jobs` field's actual arguments (filter/sort/pagination
+#      shape) -- query { __type(name: "Query") { fields { name args { name } } } }
+#      and find "jobs" in the result.
+#   2. Introspect the full Job type (/api/jobber/schema?type=Job) to confirm
+#      whether Job has a `client` back-reference (needed for attribution if
+#      querying jobs directly instead of nested under client).
+#   3. Run a level-by-level before/after comparison -- same total job count,
+#      same recurring-job count/total, same client attribution -- between
+#      the current per-client walk and a root-level query, and show the
+#      user the comparison BEFORE changing _all_clients_full() or
+#      CLIENTS_FULL_QUERY to use it.
 def _all_clients_full() -> List[Dict[str, Any]]:
     now = time.time()
     if _cache["clients_full"] is not None and (now - _cache["clients_full_at"]) < _CACHE_TTL_SECONDS:
