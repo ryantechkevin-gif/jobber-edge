@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 from .jobber_client import paginate
-from .queries import CLIENTS_FULL_QUERY, CLIENTS_QUERY, INVOICES_QUERY, RECURRING_JOBS_QUERY, VISITS_QUERY
+from .queries import CLIENTS_FULL_QUERY, CLIENTS_QUERY, INVOICES_QUERY, JOBS_QUERY, VISITS_QUERY
 from .report import fetch_client_dashboard
 
 BUSINESS_TZ = ZoneInfo("America/Phoenix")
@@ -107,8 +107,15 @@ def job_summaries(client: Dict[str, Any], recurring_only: bool, active_only: boo
     return out
 
 
-def list_recurring_jobs(active_only: bool = True) -> List[Dict[str, Any]]:
-    jobs = paginate(RECURRING_JOBS_QUERY, ["jobs"], {"filter": {"jobType": "RECURRING"}})
+def list_jobs(job_type: Optional[str] = None, active_only: bool = False) -> List[Dict[str, Any]]:
+    """
+    job_type: 'RECURRING', 'ONE_OFF', or None for every job. active_only
+    excludes jobs whose jobStatus is 'archived' -- see the JOBS_QUERY
+    comment for why that's the right "still ongoing" check, not
+    jobStatus == 'active'.
+    """
+    filter_ = {"jobType": job_type} if job_type else None
+    jobs = paginate(JOBS_QUERY, ["jobs"], {"filter": filter_})
     out = []
     for j in jobs:
         if active_only and (j.get("jobStatus") or "").lower() == "archived":
@@ -124,15 +131,24 @@ def list_recurring_jobs(active_only: bool = True) -> List[Dict[str, Any]]:
             "title": j.get("title"),
             "job_type": j.get("jobType"),
             "job_status": j.get("jobStatus"),
-            "monthly_total": j.get("total"),
+            "total": j.get("total"),
             "invoiced_total": j.get("invoicedTotal"),
             "uninvoiced_total": j.get("uninvoicedTotal"),
             "start_at": j.get("startAt"),
             "end_at": j.get("endAt"),
+            "completed_at": j.get("completedAt"),
             "autopay_enabled": j.get("willClientBeAutomaticallyCharged"),
             "jobber_web_uri": j.get("jobberWebUri"),
         })
     return out
+
+
+def list_recurring_jobs(active_only: bool = True) -> List[Dict[str, Any]]:
+    jobs = list_jobs(job_type="RECURRING", active_only=active_only)
+    for j in jobs:
+        j["monthly_total"] = j.pop("total")
+        j.pop("completed_at", None)
+    return jobs
 
 
 def list_invoices(

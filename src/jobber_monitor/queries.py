@@ -129,23 +129,26 @@ query ClientsFull($first: Int!, $after: String) {
 }
 """
 
-# Root-level, filtered directly to recurring jobs with client attribution
-# and the autopay flag attached -- confirmed live (before/after compared
-# against the CLIENTS_FULL_QUERY per-client walk: same job records, same
-# jobStatus/total values either way) to replace walking every client just
-# to find their recurring jobs. `jobStatus` is a UI bucket (active, late,
-# today, upcoming, action_required, on_hold, unscheduled,
-# expiring_within_30_days, requires_invoicing, archived) confirmed via
-# enum introspection -- 'archived' is the only one that means the
-# recurring job is actually closed; everything else is still ongoing
-# (verified live: one page of recurring jobs was 85% "action_required"
-# and only 14% "active", so treating jobStatus=='active' as the active
-# filter would massively undercount -- filter on jobStatus != 'archived'
-# instead). `willClientBeAutomaticallyCharged` is the confirmed source
-# for the "Automatic Payments Enabled/Disabled" column from the old CSV
-# export.
-RECURRING_JOBS_QUERY = """
-query RecurringJobs($first: Int!, $after: String, $filter: JobFilterAttributes) {
+# Root-level, generic over any JobFilterAttributes (jobType: RECURRING for
+# the recurring book, jobType: ONE_OFF for Incomplete Jobs, or filter: null
+# for everything) with client attribution and the autopay flag attached --
+# confirmed live (before/after compared against the CLIENTS_FULL_QUERY
+# per-client walk: same job records, same jobStatus/total values either
+# way) to replace walking every client just to find their jobs.
+# `jobStatus` is a UI bucket (active, late, today, upcoming,
+# action_required, on_hold, unscheduled, expiring_within_30_days,
+# requires_invoicing, archived) confirmed via enum introspection --
+# 'archived' is the only one that means the job is actually closed;
+# everything else is still ongoing (verified live: one page of recurring
+# jobs was 85% "action_required" and only 14% "active", so treating
+# jobStatus=='active' as the active filter would massively undercount --
+# filter on jobStatus != 'archived' instead). `completedAt` is null for
+# an open one-off job regardless of jobStatus bucket, which is what
+# Incomplete Jobs actually needs. `willClientBeAutomaticallyCharged` is
+# the confirmed source for the "Automatic Payments Enabled/Disabled"
+# column from the old CSV export.
+JOBS_QUERY = """
+query JobsByFilter($first: Int!, $after: String, $filter: JobFilterAttributes) {
   jobs(first: $first, after: $after, filter: $filter) {
     nodes {
       id
