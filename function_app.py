@@ -1,7 +1,7 @@
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
@@ -11,6 +11,8 @@ import azure.functions as func
 from jobber_monitor import oauth
 from jobber_monitor.ask import ask as ask_question
 from jobber_monitor.jobber_client import execute
+from jobber_monitor.monday_dashboard import build_monday_dashboard, save_this_weeks_snapshot
+from jobber_monitor.notify_teams import build_monday_dashboard_message, post_teams_message
 from jobber_monitor.queries import ACCOUNT_QUERY, INTROSPECT_TYPE_QUERY
 from jobber_monitor.main import run as weekly_report_run
 from jobber_monitor.report import fetch_client_dashboard
@@ -184,6 +186,53 @@ def jobber_report_http(req: func.HttpRequest) -> func.HttpResponse:
     except RuntimeError as exc:
         return func.HttpResponse(str(exc), status_code=400)
     return func.HttpResponse(text, mimetype="text/plain; charset=utf-8")
+
+
+# The live-API Monday Dashboard (monday_dashboard.py) -- the replacement
+# for the manual 5-CSV weekly process, still NOT wired into the Monday
+# timer below until it's been backtested against a known week and
+# confirmed to match. GET for a quick check (no WeeFee data, since GET
+# has no body); POST with a JSON body to attach that week's WeeFee
+# export and/or backtest a specific past week:
+#   GET  /api/jobber/monday-dashboard?week_end=2026-08-23&post=false
+#   POST /api/jobber/monday-dashboard  {"week_end": "2026-08-23", "weefee": {...}, "post": false}
+# post=true also posts the Teams summary and saves this week's snapshot
+# for next week's Week-over-Week comparison -- off by default so this can
+# be hit repeatedly while testing/backtesting without side effects.
+@app.route(route="jobber/monday-dashboard", methods=["GET", "POST"], auth_level=func.AuthLevel.FUNCTION)
+def jobber_monday_dashboard_http(req: func.HttpRequest) -> func.HttpResponse:
+    weefee = None
+    week_end_raw = req.params.get("week_end")
+    do_post = req.params.get("post", "").strip().lower() in ("1", "true", "yes")
+
+    if req.method == "POST":
+        try:
+            body = req.get_json()
+        except ValueError:
+            body = {}
+        week_end_raw = body.get("week_end", week_end_raw)
+        weefee = body.get("weefee")
+        if "post" in body:
+            do_post = bool(body["post"])
+
+    week_end = None
+    if week_end_raw:
+        try:
+            week_end = date.fromisoformat(week_end_raw)
+        except ValueError:
+            return func.HttpResponse(f"Invalid week_end (expected YYYY-MM-DD): {week_end_raw!r}", status_code=400)
+
+    try:
+        dashboard = build_monday_dashboard(week_end=week_end, weefee=weefee)
+        if do_post:
+            webhook = os.getenv("TEAMS_WEBHOOK_URL", "").strip()
+            if webhook:
+                post_teams_message(webhook, build_monday_dashboard_message(dashboard))
+            save_this_weeks_snapshot(dashboard)
+    except RuntimeError as exc:
+        return func.HttpResponse(str(exc), status_code=400)
+
+    return func.HttpResponse(json.dumps(dashboard, default=str), mimetype="application/json; charset=utf-8")
 
 
 # Monday 8am America/Phoenix (UTC-7 year-round, no DST) = 15:00 UTC --
