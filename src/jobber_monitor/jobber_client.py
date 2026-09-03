@@ -125,13 +125,18 @@ def paginate(
     query: str,
     connection_path: List[str],
     variables: Optional[Dict[str, Any]] = None,
-    page_size: int = 50,
+    page_size: int = 100,
 ) -> List[Dict[str, Any]]:
     """
     Walks every page of a Relay-style connection. `query` must accept
     `$first: Int!` and `$after: String`; `connection_path` is the list of
     keys (within the `data` payload) leading to the {nodes, pageInfo}
-    connection, e.g. ["clients"] or ["invoices"].
+    connection, e.g. ["clients"] or ["invoices"]. page_size defaults to
+    100 (confirmed live as accepted) rather than a smaller value -- large
+    connections (all one-off jobs, all invoices) hit Azure's hard 230s
+    HTTP response limit combined with Jobber's rate limiting when paged
+    50 at a time, since every extra page is another full round trip that
+    can itself get throttled.
     """
     items: List[Dict[str, Any]] = []
     after: Optional[str] = None
