@@ -165,12 +165,18 @@ def list_invoices(
     until_date: Optional[str] = None,
     recurring_only: bool = False,
 ) -> List[Dict[str, Any]]:
-    # since_date also becomes a server-side issuedDate filter (confirmed
-    # shape: InvoiceFilterAttributes.issuedDate is Iso8601DateTimeRangeInput)
-    # when provided -- invoices accumulate without bound, so an unscoped
-    # caller fetching years of history risks Azure's 230s HTTP limit. The
-    # Python-side filter below still runs regardless, as a safety net.
-    filter_ = {"issuedDate": {"after": since_date}} if since_date else None
+    # since_date becomes a server-side createdAt filter (confirmed shape:
+    # InvoiceFilterAttributes.createdAt is Iso8601DateTimeRangeInput) rather
+    # than issuedDate -- draft/not-yet-issued invoices have no issuedDate,
+    # so filtering on issuedDate silently drops them from the result set
+    # entirely (confirmed live: a known $62.70 draft invoice vanished from
+    # a backtest once issuedDate scoping was added). createdAt is NON_NULL
+    # on Invoice, so every invoice is still reachable. Invoices accumulate
+    # without bound, so an unscoped caller fetching years of history risks
+    # Azure's 230s HTTP limit -- the Python-side filter below (which still
+    # windows on issued_date/createdAt, see `when` below) runs regardless,
+    # as a safety net.
+    filter_ = {"createdAt": {"after": since_date}} if since_date else None
     invoices = paginate(INVOICES_QUERY, ["invoices"], {"filter": filter_})
     since = parse_date(since_date)
     until = parse_date(until_date) or datetime.now(BUSINESS_TZ).date()
