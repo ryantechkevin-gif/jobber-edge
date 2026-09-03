@@ -59,7 +59,12 @@ def week_over_week_section(active_recurring_jobs: List[Dict[str, Any]], week_end
 
 
 def billing_risk_section(invoices: List[Dict[str, Any]]) -> Dict[str, Any]:
-    outstanding = [i for i in invoices if (i.get("balance") or 0) != 0]
+    # balance > 0, not != 0 -- a negative balance is a credit/refund owed
+    # TO the client, not money outstanding from them, and lumping it into
+    # "outstanding"/"ghost balance" understates the real risk by netting
+    # a credit against genuine unpaid amounts (confirmed live: a -$240
+    # credit note was silently offsetting real ghost balances).
+    outstanding = [i for i in invoices if (i.get("balance") or 0) > 0]
     ghost = [i for i in outstanding if (i.get("status") or "").lower() == _GHOST_STATUS]
     ghost_ids = {i["invoice_id"] for i in ghost}
     real_outstanding = [i for i in outstanding if i["invoice_id"] not in ghost_ids]
@@ -240,8 +245,19 @@ def build_monday_dashboard(week_end: Optional[date] = None, weefee: Optional[Dic
     week_start = week_end - timedelta(days=6)
 
     all_recurring = lookups.list_recurring_jobs(active_only=False)
-    active_recurring = [j for j in all_recurring if (j.get("job_status") or "").lower() != "archived"]
     closed_recurring = [j for j in all_recurring if (j.get("job_status") or "").lower() == "archived"]
+    # "Active recurring" requires both jobStatus != archived AND that the
+    # job has actually started by week_end -- confirmed live that some
+    # recurring jobs (mostly yearly-support renewals) carry a startAt over
+    # a year in the future (Jobber auto-schedules next year's renewal job
+    # ahead of time), and jobStatus alone doesn't distinguish those from
+    # currently-running jobs. Without this, MRR and job/client counts were
+    # inflated by revenue that hasn't started yet.
+    active_recurring = [
+        j for j in all_recurring
+        if (j.get("job_status") or "").lower() != "archived"
+        and (lookups.parse_date(j.get("start_at")) or date.min) <= week_end
+    ]
 
     # Scoped to the last ~18 months, server-side (JobFilterAttributes.
     # createdAt) -- a one-off job that old is neither a meaningful weekly
@@ -258,8 +274,12 @@ def build_monday_dashboard(week_end: Optional[date] = None, weefee: Optional[Dic
     # 504 timeouts. paid_this_week still catches old invoices paid this
     # week as long as they were issued within the window; a payment on an
     # invoice issued over 18 months ago would be missed, an accepted
-    # tradeoff for staying inside Azure's 230s HTTP limit.
-    invoices = lookups.list_invoices(since_date=history_cutoff, until_date=None)
+    # tradeoff for staying inside Azure's 230s HTTP limit. until_date is
+    # week_end, not "today" -- confirmed live this matters a lot: without
+    # it, backtesting a past week picked up invoices issued after that
+    # week ended (e.g. a report for Aug 17-23 saw a Sept 3 invoice),
+    # which would also affect a normal live run if it's ever run late.
+    invoices = lookups.list_invoices(since_date=history_cutoff, until_date=week_end.isoformat())
     visits = lookups.list_visits(
         start_after=datetime.combine(week_start, dtime.min, tzinfo=lookups.BUSINESS_TZ).isoformat(),
         start_before=datetime.combine(week_end, dtime.max, tzinfo=lookups.BUSINESS_TZ).isoformat(),
