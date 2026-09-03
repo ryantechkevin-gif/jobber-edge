@@ -107,15 +107,24 @@ def job_summaries(client: Dict[str, Any], recurring_only: bool, active_only: boo
     return out
 
 
-def list_jobs(job_type: Optional[str] = None, active_only: bool = False) -> List[Dict[str, Any]]:
+def list_jobs(job_type: Optional[str] = None, active_only: bool = False, created_after: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     job_type: 'RECURRING', 'ONE_OFF', or None for every job. active_only
     excludes jobs whose jobStatus is 'archived' -- see the JOBS_QUERY
     comment for why that's the right "still ongoing" check, not
-    jobStatus == 'active'.
+    jobStatus == 'active'. created_after (ISO8601DateTime string) is a
+    server-side filter (confirmed shape: JobFilterAttributes.createdAt
+    is Iso8601DateTimeRangeInput with before/after/eq) -- use it for
+    large unbounded-history connections like ONE_OFF jobs, since fetching
+    years of history every call risks Azure's 230s HTTP limit combined
+    with Jobber's rate limiting on the extra pages.
     """
-    filter_ = {"jobType": job_type} if job_type else None
-    jobs = paginate(JOBS_QUERY, ["jobs"], {"filter": filter_})
+    filter_: Dict[str, Any] = {}
+    if job_type:
+        filter_["jobType"] = job_type
+    if created_after:
+        filter_["createdAt"] = {"after": created_after}
+    jobs = paginate(JOBS_QUERY, ["jobs"], {"filter": filter_ or None})
     out = []
     for j in jobs:
         if active_only and (j.get("jobStatus") or "").lower() == "archived":

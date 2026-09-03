@@ -243,7 +243,14 @@ def build_monday_dashboard(week_end: Optional[date] = None, weefee: Optional[Dic
     active_recurring = [j for j in all_recurring if (j.get("job_status") or "").lower() != "archived"]
     closed_recurring = [j for j in all_recurring if (j.get("job_status") or "").lower() == "archived"]
 
-    one_off_jobs = lookups.list_jobs(job_type="ONE_OFF")
+    # Scoped to the last ~18 months, server-side (JobFilterAttributes.
+    # createdAt) -- a one-off job that old is neither a meaningful weekly
+    # "incomplete job" flag nor a "new client" worth evaluating for
+    # recurring service, and years of unbounded history was the single
+    # biggest contributor to hitting Azure's 230s HTTP limit combined
+    # with Jobber's rate limiting.
+    one_off_cutoff = (week_end - timedelta(days=548)).isoformat() + "T00:00:00Z"
+    one_off_jobs = lookups.list_jobs(job_type="ONE_OFF", created_after=one_off_cutoff)
     # Unbounded -- billing risk/invoice status want the full picture, not
     # just this week, and paid_this_week filters by payment entry_date
     # (which can be well after an invoice's own issued date) not by
