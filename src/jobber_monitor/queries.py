@@ -174,13 +174,14 @@ query JobsByFilter($first: Int!, $after: String, $filter: JobFilterAttributes) {
 # Root-level visits -- confirmed live: Visit has direct `client`, `job`,
 # `property` (address), and `assignedUsers` links, so this is a single
 # flat pass with everything the "Visits This Week" section needs, no
-# per-job/per-client walking required. Paginated in full and filtered by
-# startAt in Python (same pattern as INVOICES_QUERY) rather than using
-# the root `filter` arg's date-range shape, which hasn't been confirmed
-# yet -- revisit if visit volume ever makes full pagination too slow.
+# per-job/per-client walking required. Filtered server-side by startAt
+# (VisitFilterAttributes.startAt confirmed as Iso8601DateTimeRangeInput,
+# same before/after/eq shape as Job's) -- visits accumulate every week
+# forever, so fetching all of history just to find one week's worth was
+# a major contributor to hitting Azure's 230s HTTP limit.
 VISITS_QUERY = """
-query VisitsPage($first: Int!, $after: String) {
-  visits(first: $first, after: $after) {
+query VisitsPage($first: Int!, $after: String, $filter: VisitFilterAttributes) {
+  visits(first: $first, after: $after, filter: $filter) {
     nodes {
       id
       title

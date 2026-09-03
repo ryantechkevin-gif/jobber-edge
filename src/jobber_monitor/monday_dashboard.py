@@ -16,7 +16,7 @@ available that week. See function_app.py's monday-dashboard route.
 from __future__ import annotations
 
 from collections import Counter
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time as dtime, timedelta
 from typing import Any, Dict, List, Optional, Set
 
 from . import lookups, snapshots
@@ -257,7 +257,10 @@ def build_monday_dashboard(week_end: Optional[date] = None, weefee: Optional[Dic
     # issuedDate, so restricting the fetch window here would silently
     # miss old invoices paid this week.
     invoices = lookups.list_invoices(since_date=None, until_date=None)
-    visits = lookups.list_visits()
+    visits = lookups.list_visits(
+        start_after=datetime.combine(week_start, dtime.min, tzinfo=lookups.BUSINESS_TZ).isoformat(),
+        start_before=datetime.combine(week_end, dtime.max, tzinfo=lookups.BUSINESS_TZ).isoformat(),
+    )
     clients_by_id = {c["client_id"]: c for c in lookups.list_clients()}
 
     billing_risk = billing_risk_section(invoices)

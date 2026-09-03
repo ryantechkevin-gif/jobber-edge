@@ -253,8 +253,19 @@ def list_clients(active_only: bool = False) -> List[Dict[str, Any]]:
     return out
 
 
-def list_visits() -> List[Dict[str, Any]]:
-    visits = paginate(VISITS_QUERY, ["visits"])
+def list_visits(start_after: Optional[str] = None, start_before: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    start_after/start_before (ISO8601DateTime strings) filter server-side
+    on Visit.startAt -- pass both to scope to a specific week rather than
+    fetching every visit ever recorded, which grows without bound.
+    """
+    range_: Dict[str, Any] = {}
+    if start_after:
+        range_["after"] = start_after
+    if start_before:
+        range_["before"] = start_before
+    filter_ = {"startAt": range_} if range_ else None
+    visits = paginate(VISITS_QUERY, ["visits"], {"filter": filter_})
     out = []
     for v in visits:
         client = v.get("client") or {}
