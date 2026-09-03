@@ -189,11 +189,13 @@ def jobber_report_http(req: func.HttpRequest) -> func.HttpResponse:
 
 
 # The live-API Monday Dashboard (monday_dashboard.py) -- the replacement
-# for the manual 5-CSV weekly process, still NOT wired into the Monday
-# timer below until it's been backtested against a known week and
-# confirmed to match. GET for a quick check (no WeeFee data, since GET
-# has no body); POST with a JSON body to attach that week's WeeFee
-# export and/or backtest a specific past week:
+# for the manual 5-CSV weekly process, now wired into the Monday timer
+# below after backtesting against the Aug 17-23 week matched or explained
+# every section except Monthly Recurring (a ~$931/4-job gap still being
+# chased down separately -- see the backtest reconciliation report).
+# GET for a quick check (no WeeFee data, since GET has no body); POST
+# with a JSON body to attach that week's WeeFee export and/or backtest a
+# specific past week:
 #   GET  /api/jobber/monday-dashboard?week_end=2026-08-23&post=false
 #   POST /api/jobber/monday-dashboard  {"week_end": "2026-08-23", "weefee": {...}, "post": false}
 # post=true also posts the Teams summary and saves this week's snapshot
@@ -236,8 +238,14 @@ def jobber_monday_dashboard_http(req: func.HttpRequest) -> func.HttpResponse:
 
 
 # Monday 8am America/Phoenix (UTC-7 year-round, no DST) = 15:00 UTC --
-# replaces the CSV-based Monday Dashboard that used to run off Jobber's own
-# report-scheduler emails.
+# replaces the manual 5-CSV weekly process that used to run off Jobber's
+# own report-scheduler emails. WeeFee isn't wired in here yet (still no
+# confirmed export source for it -- see normalize_weefee's default), so
+# this runs without it until that's resolved.
 @app.timer_trigger(schedule="0 0 15 * * 1", arg_name="mytimer", run_on_startup=False, use_monitor=True)
 def weekly_report_timer(mytimer: func.TimerRequest) -> None:
-    weekly_report_run(post=True)
+    dashboard = build_monday_dashboard()
+    webhook = os.getenv("TEAMS_WEBHOOK_URL", "").strip()
+    if webhook:
+        post_teams_message(webhook, build_monday_dashboard_message(dashboard))
+    save_this_weeks_snapshot(dashboard)
