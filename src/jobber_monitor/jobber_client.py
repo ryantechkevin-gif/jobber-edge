@@ -23,6 +23,7 @@ that isn't yet).
 from __future__ import annotations
 
 import os
+import time
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -34,6 +35,16 @@ from .oauth import get_valid_access_token
 API_BASE_URL = os.getenv("JOBBER_API_BASE_URL", "https://api.getjobber.com")
 GRAPHQL_PATH = os.getenv("JOBBER_GRAPHQL_PATH", "/api/graphql")
 API_VERSION = os.getenv("JOBBER_API_VERSION", "2025-04-16")
+
+# Jobber's query-cost rate limiting (https://developer.getjobber.com/docs/
+# using_jobbers_api/api_rate_limits) reports throttling as a GraphQL-level
+# error ({"errors": [{"extensions": {"code": "THROTTLED"}}]}) on an
+# otherwise-200 response -- confirmed live, monday_dashboard.py's endpoint
+# hit it running several full paginated fetches back to back. The
+# urllib3 Retry below only ever sees HTTP status codes, so it can't catch
+# this at all; handled separately in execute() with its own backoff.
+_THROTTLE_MAX_RETRIES = 5
+_THROTTLE_BASE_DELAY_SECONDS = 2.0
 
 _session: Optional[requests.Session] = None
 
@@ -66,35 +77,48 @@ class JobberGraphQLError(RuntimeError):
         super().__init__(f"Jobber GraphQL returned errors: {errors}")
 
 
+def _is_throttled(errors: List[Dict[str, Any]]) -> bool:
+    return any((e.get("extensions") or {}).get("code") == "THROTTLED" for e in errors)
+
+
 def execute(query: str, variables: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     token = get_valid_access_token()
     sess = _get_session()
 
-    r = sess.post(
-        f"{API_BASE_URL}{GRAPHQL_PATH}",
-        json={"query": query, "variables": variables or {}},
-        headers={
-            "Authorization": f"Bearer {token}",
-            "X-JOBBER-GRAPHQL-VERSION": API_VERSION,
-            "Content-Type": "application/json",
-        },
-        timeout=(5, 30),
-    )
-    if r.status_code >= 400:
-        raise requests.HTTPError(
-            f"HTTP {r.status_code} from Jobber GraphQL. Body: {r.text[:500]}", response=r
+    attempt = 0
+    while True:
+        r = sess.post(
+            f"{API_BASE_URL}{GRAPHQL_PATH}",
+            json={"query": query, "variables": variables or {}},
+            headers={
+                "Authorization": f"Bearer {token}",
+                "X-JOBBER-GRAPHQL-VERSION": API_VERSION,
+                "Content-Type": "application/json",
+            },
+            timeout=(5, 30),
         )
+        if r.status_code >= 400:
+            raise requests.HTTPError(
+                f"HTTP {r.status_code} from Jobber GraphQL. Body: {r.text[:500]}", response=r
+            )
 
-    payload = r.json()
+        payload = r.json()
 
-    versioning = (payload.get("extensions") or {}).get("versioning") or {}
-    if versioning.get("warning"):
-        print(f"JOBBER_API_VERSION_WARNING: {versioning['warning']}")
+        versioning = (payload.get("extensions") or {}).get("versioning") or {}
+        if versioning.get("warning"):
+            print(f"JOBBER_API_VERSION_WARNING: {versioning['warning']}")
 
-    if payload.get("errors"):
-        raise JobberGraphQLError(payload["errors"])
+        errors = payload.get("errors")
+        if errors:
+            if _is_throttled(errors) and attempt < _THROTTLE_MAX_RETRIES:
+                delay = _THROTTLE_BASE_DELAY_SECONDS * (2 ** attempt)
+                print(f"JOBBER_THROTTLED: retrying in {delay:.0f}s (attempt {attempt + 1}/{_THROTTLE_MAX_RETRIES})")
+                time.sleep(delay)
+                attempt += 1
+                continue
+            raise JobberGraphQLError(errors)
 
-    return payload.get("data") or {}
+        return payload.get("data") or {}
 
 
 def paginate(
