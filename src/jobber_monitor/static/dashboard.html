@@ -499,9 +499,9 @@
 
   function statusPillClass(status) {
     var s = (status || '').toLowerCase();
-    if (['active', 'paid', 'converted', 'complete'].indexOf(s) !== -1) return 'st-good';
-    if (['archived', 'closed', 'expired'].indexOf(s) !== -1) return 'st-neutral';
-    if (['draft', 'awaiting_response', 'awaiting_payment', 'pending'].indexOf(s) !== -1) return 'st-warning';
+    if (['active', 'paid', 'converted', 'complete', 'today'].indexOf(s) !== -1) return 'st-good';
+    if (['archived', 'closed', 'expired', 'unscheduled'].indexOf(s) !== -1) return 'st-neutral';
+    if (['draft', 'awaiting_response', 'awaiting_payment', 'pending', 'late', 'action_required', 'on_hold', 'requires_invoicing', 'expiring_within_30_days', 'past_due'].indexOf(s) !== -1) return 'st-warning';
     return 'st-accent';
   }
 
@@ -748,14 +748,21 @@
     content.innerHTML = html;
   }
 
+  // "Active" here means still an ongoing job engagement, not literally
+  // jobStatus === 'active' -- jobStatus is really a UI bucket (active,
+  // late, today, upcoming, action_required, on_hold, unscheduled,
+  // expiring_within_30_days, requires_invoicing, archived), confirmed
+  // live: a real page of recurring jobs was 85% "action_required" and
+  // only 14% "active", so checking only for 'active' undercounts
+  // massively. 'archived' is the one terminal/closed value.
   function hasActiveJob(c) {
-    return c.jobs.nodes.some(function (j) { return (j.jobStatus || '').toLowerCase() === 'active'; });
+    return c.jobs.nodes.some(function (j) { return (j.jobStatus || '').toLowerCase() !== 'archived'; });
   }
 
   function renderStatRow(c) {
-    var activeJobs = c.jobs.nodes.filter(function (j) { return (j.jobStatus || '').toLowerCase() === 'active'; }).length;
+    var activeJobs = c.jobs.nodes.filter(function (j) { return (j.jobStatus || '').toLowerCase() !== 'archived'; }).length;
     var invoiceTotal = c.invoices.nodes.reduce(function (sum, i) { return sum + ((i.amounts && i.amounts.total) || 0); }, 0);
-    var recurring = c.jobs.nodes.find(function (j) { return j.jobType === 'RECURRING' && (j.jobStatus || '').toLowerCase() === 'active'; });
+    var recurring = c.jobs.nodes.find(function (j) { return j.jobType === 'RECURRING' && (j.jobStatus || '').toLowerCase() !== 'archived'; });
 
     return '<div class="stat-row">' +
       '<div class="stat"><p class="stat-label">Active jobs</p><div class="stat-value">' + activeJobs + '</div><p class="stat-sub">of ' + c.jobs.nodes.length + ' shown</p></div>' +

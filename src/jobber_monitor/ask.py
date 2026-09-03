@@ -12,10 +12,13 @@ Deliberate design constraints:
     against data pulled through the same execute()/paginate() helpers
     used elsewhere in this app, rather than trusting Jobber's own
     (limited, inconsistently available) filter/sort arguments -- e.g.
-    there's no confirmed root-level `jobs` connection, and Invoice/Quote
-    nest `total` under `amounts` rather than as a flat field. Claude
-    reasons over real, already-correct numbers instead of writing its own
-    GraphQL against a schema it doesn't fully know.
+    Invoice/Quote nest `total` under `amounts` rather than as a flat
+    field, and jobStatus is a UI bucket (active/late/today/upcoming/
+    action_required/on_hold/unscheduled/expiring_within_30_days/
+    requires_invoicing/archived) where 'archived' is the only closed
+    value, not a simple active/archived flag. Claude reasons over real,
+    already-correct numbers instead of writing its own GraphQL against a
+    schema it doesn't fully know.
   - The tool results returned to the caller alongside the answer
     (`used_data`) are the literal JSON Claude was given, so an answer can
     always be checked against the underlying numbers rather than taken
@@ -33,7 +36,7 @@ from zoneinfo import ZoneInfo
 import anthropic
 
 from .jobber_client import paginate
-from .queries import CLIENTS_FULL_QUERY, CLIENTS_QUERY, INVOICES_QUERY
+from .queries import CLIENTS_FULL_QUERY, CLIENTS_QUERY, INVOICES_QUERY, RECURRING_JOBS_QUERY
 from .report import fetch_client_dashboard
 
 MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
@@ -69,23 +72,11 @@ _cache: Dict[str, Any] = {"clients_full": None, "clients_full_at": 0.0}
 _CACHE_TTL_SECONDS = 60
 
 
-# TODO (picked back up later, not yet acted on): live introspection of the
-# Query root type (2026-07-21) showed a `jobs` field DOES exist at the root
-# -- CLIENTS_FULL_QUERY below was written on the earlier (wrong) assumption
-# that jobs are only reachable nested under a client, which still works but
-# may be doing more round trips than necessary. Before switching anything
-# over to a root-level `jobs()` query, still need to:
-#   1. Introspect the `jobs` field's actual arguments (filter/sort/pagination
-#      shape) -- query { __type(name: "Query") { fields { name args { name } } } }
-#      and find "jobs" in the result.
-#   2. Introspect the full Job type (/api/jobber/schema?type=Job) to confirm
-#      whether Job has a `client` back-reference (needed for attribution if
-#      querying jobs directly instead of nested under client).
-#   3. Run a level-by-level before/after comparison -- same total job count,
-#      same recurring-job count/total, same client attribution -- between
-#      the current per-client walk and a root-level query, and show the
-#      user the comparison BEFORE changing _all_clients_full() or
-#      CLIENTS_FULL_QUERY to use it.
+# Used for property/custom-field search (search_clients_and_jobs) and
+# anything needing a client's properties, not for recurring-job questions
+# -- those go through RECURRING_JOBS_QUERY below instead (root-level,
+# filterable, confirmed live via a before/after comparison against this
+# per-client walk to return identical job records).
 def _all_clients_full() -> List[Dict[str, Any]]:
     now = time.time()
     if _cache["clients_full"] is not None and (now - _cache["clients_full_at"]) < _CACHE_TTL_SECONDS:
@@ -118,12 +109,18 @@ def _property_summaries(client: Dict[str, Any]) -> List[Dict[str, Any]]:
     return props
 
 
+# jobStatus is a UI bucket (active/late/today/upcoming/action_required/
+# on_hold/unscheduled/expiring_within_30_days/requires_invoicing/archived),
+# not a simple active/archived flag -- confirmed live: a real page of
+# recurring jobs was 85% "action_required" and only 14% "active", so
+# treating "active" as the only non-terminal value would massively
+# undercount. 'archived' is the one status that means the job is closed.
 def _job_summaries(client: Dict[str, Any], recurring_only: bool, active_only: bool) -> List[Dict[str, Any]]:
     out = []
     for j in (client.get("jobs") or {}).get("nodes", []):
         if recurring_only and j.get("jobType") != "RECURRING":
             continue
-        if active_only and (j.get("jobStatus") or "").upper() != "ACTIVE":
+        if active_only and (j.get("jobStatus") or "").lower() == "archived":
             continue
         out.append({
             "job_id": j["id"],
@@ -144,17 +141,30 @@ def _job_summaries(client: Dict[str, Any], recurring_only: bool, active_only: bo
 # ---------- tools ----------
 
 def _list_recurring_jobs(active_only: bool = True) -> List[Dict[str, Any]]:
+    jobs = paginate(RECURRING_JOBS_QUERY, ["jobs"], {"filter": {"jobType": "RECURRING"}})
     out = []
-    for c in _all_clients_full():
-        jobs = _job_summaries(c, recurring_only=True, active_only=active_only)
-        for j in jobs:
-            out.append({
-                "client_id": c["id"],
-                "client_name": c.get("name"),
-                "company_name": c.get("companyName"),
-                "client_archived": c.get("isArchived"),
-                **j,
-            })
+    for j in jobs:
+        if active_only and (j.get("jobStatus") or "").lower() == "archived":
+            continue
+        client = j.get("client") or {}
+        out.append({
+            "client_id": client.get("id"),
+            "client_name": client.get("name"),
+            "company_name": client.get("companyName"),
+            "client_archived": client.get("isArchived"),
+            "job_id": j["id"],
+            "job_number": j.get("jobNumber"),
+            "title": j.get("title"),
+            "job_type": j.get("jobType"),
+            "job_status": j.get("jobStatus"),
+            "monthly_total": j.get("total"),
+            "invoiced_total": j.get("invoicedTotal"),
+            "uninvoiced_total": j.get("uninvoicedTotal"),
+            "start_at": j.get("startAt"),
+            "end_at": j.get("endAt"),
+            "autopay_enabled": j.get("willClientBeAutomaticallyCharged"),
+            "jobber_web_uri": j.get("jobberWebUri"),
+        })
     return out
 
 
@@ -256,9 +266,14 @@ TOOLS = [
         "name": "list_recurring_jobs",
         "description": (
             "List every recurring job across all clients, with client name/company, "
-            "job title, status, monthly total, and start/end dates. Use for any "
-            "question about recurring/subscription billing overall, e.g. total "
-            "recurring monthly revenue or headcount of recurring clients."
+            "job title, status, monthly total, start/end dates, and whether autopay "
+            "is enabled (autopay_enabled). Use for any question about recurring/"
+            "subscription billing overall, e.g. total recurring monthly revenue, "
+            "headcount of recurring clients, or who has autopay disabled. "
+            "active_only=true (default) excludes only jobs whose status is "
+            "'archived' -- job_status itself can be active/late/today/upcoming/"
+            "action_required/on_hold/unscheduled/expiring_within_30_days/"
+            "requires_invoicing, all of which are still ongoing recurring jobs."
         ),
         "input_schema": {
             "type": "object",

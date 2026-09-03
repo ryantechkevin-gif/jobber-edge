@@ -121,6 +121,45 @@ query ClientsFull($first: Int!, $after: String) {
 }
 """
 
+# Root-level, filtered directly to recurring jobs with client attribution
+# and the autopay flag attached -- confirmed live (before/after compared
+# against the CLIENTS_FULL_QUERY per-client walk: same job records, same
+# jobStatus/total values either way) to replace walking every client just
+# to find their recurring jobs. `jobStatus` is a UI bucket (active, late,
+# today, upcoming, action_required, on_hold, unscheduled,
+# expiring_within_30_days, requires_invoicing, archived) confirmed via
+# enum introspection -- 'archived' is the only one that means the
+# recurring job is actually closed; everything else is still ongoing
+# (verified live: one page of recurring jobs was 85% "action_required"
+# and only 14% "active", so treating jobStatus=='active' as the active
+# filter would massively undercount -- filter on jobStatus != 'archived'
+# instead). `willClientBeAutomaticallyCharged` is the confirmed source
+# for the "Automatic Payments Enabled/Disabled" column from the old CSV
+# export.
+RECURRING_JOBS_QUERY = """
+query RecurringJobs($first: Int!, $after: String, $filter: JobFilterAttributes) {
+  jobs(first: $first, after: $after, filter: $filter) {
+    nodes {
+      id
+      jobNumber
+      title
+      jobType
+      jobStatus
+      total
+      invoicedTotal
+      uninvoicedTotal
+      startAt
+      endAt
+      completedAt
+      jobberWebUri
+      willClientBeAutomaticallyCharged
+      client { id name companyName isArchived }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+"""
+
 QUOTES_QUERY = """
 query QuotesPage($first: Int!, $after: String) {
   quotes(first: $first, after: $after) {
