@@ -45,6 +45,11 @@ query ClientsPage($first: Int!, $after: String) {
 }
 """
 
+# `paymentRecords` is a direct nested connection on Invoice (confirmed via
+# full-type introspection) -- simpler than trying to trace back from the
+# root-level `paymentRecords`/PaymentRecord.allocations union just to find
+# which invoice/client a payment belongs to. `entryDate` is the date the
+# payment was recorded (the "MARKED PAID" column from the old CSV).
 INVOICES_QUERY = """
 query InvoicesPage($first: Int!, $after: String) {
   invoices(first: $first, after: $after) {
@@ -62,6 +67,9 @@ query InvoicesPage($first: Int!, $after: String) {
         nodes { id jobType jobStatus title }
       }
       amounts { total invoiceBalance }
+      paymentRecords(first: 10) {
+        nodes { id amount entryDate }
+      }
     }
     pageInfo { hasNextPage endCursor }
   }
@@ -154,6 +162,38 @@ query RecurringJobs($first: Int!, $after: String, $filter: JobFilterAttributes) 
       jobberWebUri
       willClientBeAutomaticallyCharged
       client { id name companyName isArchived }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+"""
+
+# Root-level visits -- confirmed live: Visit has direct `client`, `job`,
+# `property` (address), and `assignedUsers` links, so this is a single
+# flat pass with everything the "Visits This Week" section needs, no
+# per-job/per-client walking required. Paginated in full and filtered by
+# startAt in Python (same pattern as INVOICES_QUERY) rather than using
+# the root `filter` arg's date-range shape, which hasn't been confirmed
+# yet -- revisit if visit volume ever makes full pagination too slow.
+VISITS_QUERY = """
+query VisitsPage($first: Int!, $after: String) {
+  visits(first: $first, after: $after) {
+    nodes {
+      id
+      title
+      startAt
+      endAt
+      isComplete
+      visitStatus
+      client { id name companyName }
+      job { id jobNumber title }
+      property {
+        id
+        address { street city province postalCode }
+      }
+      assignedUsers(first: 5) {
+        nodes { id name { full } }
+      }
     }
     pageInfo { hasNextPage endCursor }
   }
