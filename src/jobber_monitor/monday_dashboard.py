@@ -201,9 +201,40 @@ def priority_actions_section(
     return {"count": len(actions), "actions": actions}
 
 
+# ---------- WeeFee / AI Receptionist (no API exposure -- merged in
+# externally, see the module docstring) ----------
+
+_WEEFEE_DEFAULTS: Dict[str, Any] = {
+    "total_conversations": 0,
+    "calls": 0,
+    "texts": 0,
+    "web_chats": 0,
+    "needs_attention": 0,
+    "handled_no_action": 0,
+    "resolved": 0,
+    "rolling": {},
+    "conversations": [],
+}
+
+
+def normalize_weefee(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    `payload` is whatever shape that week's WeeFee export/paste produces
+    -- format isn't nailed down yet, so this just fills in zero/empty
+    defaults for anything missing rather than assuming a fixed schema,
+    so the rest of the report still renders with partial or no WeeFee
+    data for a given week.
+    """
+    if not payload:
+        return {"provided": False, **_WEEFEE_DEFAULTS}
+    merged = {**_WEEFEE_DEFAULTS, **payload}
+    merged["provided"] = True
+    return merged
+
+
 # ---------- orchestration ----------
 
-def build_monday_dashboard(week_end: Optional[date] = None) -> Dict[str, Any]:
+def build_monday_dashboard(week_end: Optional[date] = None, weefee: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     run_date = datetime.now(lookups.BUSINESS_TZ).date()
     week_end = week_end or _last_completed_week_end(run_date)
     week_start = week_end - timedelta(days=6)
@@ -240,6 +271,7 @@ def build_monday_dashboard(week_end: Optional[date] = None) -> Dict[str, Any]:
         "new_client_eval": new_client_eval_section(one_off_jobs, active_recurring_client_ids, clients_by_id),
         "closed_recurring": {"count": len(closed_recurring), "jobs": closed_recurring},
         "invoice_status_summary": invoice_status_summary_section(invoices),
+        "weefee": normalize_weefee(weefee),
     }
 
 
