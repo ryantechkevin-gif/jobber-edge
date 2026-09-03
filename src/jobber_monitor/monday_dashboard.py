@@ -249,14 +249,17 @@ def build_monday_dashboard(week_end: Optional[date] = None, weefee: Optional[Dic
     # recurring service, and years of unbounded history was the single
     # biggest contributor to hitting Azure's 230s HTTP limit combined
     # with Jobber's rate limiting.
-    one_off_cutoff = (week_end - timedelta(days=548)).isoformat() + "T00:00:00Z"
-    one_off_jobs = lookups.list_jobs(job_type="ONE_OFF", created_after=one_off_cutoff)
-    # Unbounded -- billing risk/invoice status want the full picture, not
-    # just this week, and paid_this_week filters by payment entry_date
-    # (which can be well after an invoice's own issued date) not by
-    # issuedDate, so restricting the fetch window here would silently
-    # miss old invoices paid this week.
-    invoices = lookups.list_invoices(since_date=None, until_date=None)
+    history_cutoff = (week_end - timedelta(days=548)).isoformat() + "T00:00:00Z"
+    one_off_jobs = lookups.list_jobs(job_type="ONE_OFF", created_after=history_cutoff)
+    # Scoped by issuedDate to the same ~18-month window -- matches what the
+    # old manual CSV process itself was effectively limited to (it noted
+    # "partial data" covering roughly 7 months), so this isn't a new gap,
+    # and unbounded history was the largest remaining contributor to the
+    # 504 timeouts. paid_this_week still catches old invoices paid this
+    # week as long as they were issued within the window; a payment on an
+    # invoice issued over 18 months ago would be missed, an accepted
+    # tradeoff for staying inside Azure's 230s HTTP limit.
+    invoices = lookups.list_invoices(since_date=history_cutoff, until_date=None)
     visits = lookups.list_visits(
         start_after=datetime.combine(week_start, dtime.min, tzinfo=lookups.BUSINESS_TZ).isoformat(),
         start_before=datetime.combine(week_end, dtime.max, tzinfo=lookups.BUSINESS_TZ).isoformat(),

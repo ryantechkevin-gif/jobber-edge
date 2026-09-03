@@ -50,9 +50,12 @@ query ClientsPage($first: Int!, $after: String) {
 # root-level `paymentRecords`/PaymentRecord.allocations union just to find
 # which invoice/client a payment belongs to. `entryDate` is the date the
 # payment was recorded (the "MARKED PAID" column from the old CSV).
+# `$filter` (InvoiceFilterAttributes, confirmed to include issuedDate as
+# Iso8601DateTimeRangeInput) lets callers scope by issuedDate server-side
+# for large unbounded-history fetches.
 INVOICES_QUERY = """
-query InvoicesPage($first: Int!, $after: String) {
-  invoices(first: $first, after: $after) {
+query InvoicesPage($first: Int!, $after: String, $filter: InvoiceFilterAttributes) {
+  invoices(first: $first, after: $after, filter: $filter) {
     nodes {
       id
       invoiceNumber
