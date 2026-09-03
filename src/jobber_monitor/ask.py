@@ -4,21 +4,11 @@ in the dashboard.
 
 Deliberate design constraints:
   - Claude is only ever given a FIXED, small toolbelt of read-only Python
-    functions below. It can never run arbitrary GraphQL or call any
-    Jobber mutation, no matter what's typed into the question box --
-    there's no code path from a question string to a write against the
-    live account.
-  - Every tool does its own filtering/sorting/aggregation in Python
-    against data pulled through the same execute()/paginate() helpers
-    used elsewhere in this app, rather than trusting Jobber's own
-    (limited, inconsistently available) filter/sort arguments -- e.g.
-    Invoice/Quote nest `total` under `amounts` rather than as a flat
-    field, and jobStatus is a UI bucket (active/late/today/upcoming/
-    action_required/on_hold/unscheduled/expiring_within_30_days/
-    requires_invoicing/archived) where 'archived' is the only closed
-    value, not a simple active/archived flag. Claude reasons over real,
-    already-correct numbers instead of writing its own GraphQL against a
-    schema it doesn't fully know.
+    functions below (from lookups.py, shared with monday_dashboard.py so
+    both features compute things like "active recurring jobs" the same
+    way). It can never run arbitrary GraphQL or call any Jobber mutation,
+    no matter what's typed into the question box -- there's no code path
+    from a question string to a write against the live account.
   - The tool results returned to the caller alongside the answer
     (`used_data`) are the literal JSON Claude was given, so an answer can
     always be checked against the underlying numbers rather than taken
@@ -28,19 +18,14 @@ from __future__ import annotations
 
 import json
 import os
-import time
-from datetime import date, datetime
-from typing import Any, Dict, List, Optional
-from zoneinfo import ZoneInfo
+from datetime import datetime
+from typing import Any, Dict, List
 
 import anthropic
 
-from .jobber_client import paginate
-from .queries import CLIENTS_FULL_QUERY, CLIENTS_QUERY, INVOICES_QUERY, RECURRING_JOBS_QUERY
-from .report import fetch_client_dashboard
+from . import lookups
 
 MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
-_BUSINESS_TZ = ZoneInfo("America/Phoenix")
 
 
 def _anthropic_client() -> anthropic.Anthropic:
@@ -51,214 +36,6 @@ def _anthropic_client() -> anthropic.Anthropic:
             "feature needs it to call Claude."
         )
     return anthropic.Anthropic(api_key=api_key)
-
-
-def _parse_date(value: Optional[str]) -> Optional[date]:
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
-    except ValueError:
-        return None
-
-
-# Cached for a short window so a single question that triggers several
-# tool calls (e.g. list_recurring_jobs then search_clients_and_jobs)
-# doesn't re-fetch every client from Jobber each time -- correctness
-# doesn't depend on this (recurring billing data doesn't change
-# second-to-second), it's purely to keep one question's Jobber round
-# trips down.
-_cache: Dict[str, Any] = {"clients_full": None, "clients_full_at": 0.0}
-_CACHE_TTL_SECONDS = 60
-
-
-# Used for property/custom-field search (search_clients_and_jobs) and
-# anything needing a client's properties, not for recurring-job questions
-# -- those go through RECURRING_JOBS_QUERY below instead (root-level,
-# filterable, confirmed live via a before/after comparison against this
-# per-client walk to return identical job records).
-def _all_clients_full() -> List[Dict[str, Any]]:
-    now = time.time()
-    if _cache["clients_full"] is not None and (now - _cache["clients_full_at"]) < _CACHE_TTL_SECONDS:
-        return _cache["clients_full"]
-    clients = paginate(CLIENTS_FULL_QUERY, ["clients"])
-    _cache["clients_full"] = clients
-    _cache["clients_full_at"] = now
-    return clients
-
-
-def _custom_field_value(field: Dict[str, Any]) -> Any:
-    return field.get("valueText") if field.get("valueText") is not None else field.get("valueDropdown")
-
-
-def _property_summaries(client: Dict[str, Any]) -> List[Dict[str, Any]]:
-    props = []
-    for p in (client.get("clientProperties") or {}).get("nodes", []):
-        addr = p.get("address") or {}
-        fields = {
-            f.get("label"): _custom_field_value(f)
-            for f in (p.get("customFields") or [])
-            if _custom_field_value(f) not in (None, "")
-        }
-        props.append({
-            "property_id": p.get("id"),
-            "name": p.get("name"),
-            "address": ", ".join(filter(None, [addr.get("street"), addr.get("city"), addr.get("province"), addr.get("postalCode")])),
-            "custom_fields": fields,
-        })
-    return props
-
-
-# jobStatus is a UI bucket (active/late/today/upcoming/action_required/
-# on_hold/unscheduled/expiring_within_30_days/requires_invoicing/archived),
-# not a simple active/archived flag -- confirmed live: a real page of
-# recurring jobs was 85% "action_required" and only 14% "active", so
-# treating "active" as the only non-terminal value would massively
-# undercount. 'archived' is the one status that means the job is closed.
-def _job_summaries(client: Dict[str, Any], recurring_only: bool, active_only: bool) -> List[Dict[str, Any]]:
-    out = []
-    for j in (client.get("jobs") or {}).get("nodes", []):
-        if recurring_only and j.get("jobType") != "RECURRING":
-            continue
-        if active_only and (j.get("jobStatus") or "").lower() == "archived":
-            continue
-        out.append({
-            "job_id": j["id"],
-            "job_number": j.get("jobNumber"),
-            "title": j.get("title"),
-            "job_type": j.get("jobType"),
-            "job_status": j.get("jobStatus"),
-            "monthly_total": j.get("total"),
-            "invoiced_total": j.get("invoicedTotal"),
-            "uninvoiced_total": j.get("uninvoicedTotal"),
-            "start_at": j.get("startAt"),
-            "end_at": j.get("endAt"),
-            "jobber_web_uri": j.get("jobberWebUri"),
-        })
-    return out
-
-
-# ---------- tools ----------
-
-def _list_recurring_jobs(active_only: bool = True) -> List[Dict[str, Any]]:
-    jobs = paginate(RECURRING_JOBS_QUERY, ["jobs"], {"filter": {"jobType": "RECURRING"}})
-    out = []
-    for j in jobs:
-        if active_only and (j.get("jobStatus") or "").lower() == "archived":
-            continue
-        client = j.get("client") or {}
-        out.append({
-            "client_id": client.get("id"),
-            "client_name": client.get("name"),
-            "company_name": client.get("companyName"),
-            "client_archived": client.get("isArchived"),
-            "job_id": j["id"],
-            "job_number": j.get("jobNumber"),
-            "title": j.get("title"),
-            "job_type": j.get("jobType"),
-            "job_status": j.get("jobStatus"),
-            "monthly_total": j.get("total"),
-            "invoiced_total": j.get("invoicedTotal"),
-            "uninvoiced_total": j.get("uninvoicedTotal"),
-            "start_at": j.get("startAt"),
-            "end_at": j.get("endAt"),
-            "autopay_enabled": j.get("willClientBeAutomaticallyCharged"),
-            "jobber_web_uri": j.get("jobberWebUri"),
-        })
-    return out
-
-
-def _list_invoices(
-    since_date: Optional[str] = None,
-    until_date: Optional[str] = None,
-    recurring_only: bool = False,
-) -> List[Dict[str, Any]]:
-    invoices = paginate(INVOICES_QUERY, ["invoices"])
-    since = _parse_date(since_date)
-    until = _parse_date(until_date) or datetime.now(_BUSINESS_TZ).date()
-
-    out = []
-    for inv in invoices:
-        when = _parse_date(inv.get("issuedDate")) or _parse_date(inv.get("createdAt"))
-        if when is None:
-            continue
-        if since and when < since:
-            continue
-        if when > until:
-            continue
-
-        linked_jobs = (inv.get("jobs") or {}).get("nodes", [])
-        is_recurring = any(j.get("jobType") == "RECURRING" for j in linked_jobs)
-        if recurring_only and not is_recurring:
-            continue
-
-        amounts = inv.get("amounts") or {}
-        client = inv.get("client") or {}
-        out.append({
-            "invoice_id": inv["id"],
-            "invoice_number": inv.get("invoiceNumber"),
-            "status": inv.get("invoiceStatus"),
-            "subject": inv.get("subject"),
-            "issued_date": inv.get("issuedDate") or inv.get("createdAt"),
-            "due_date": inv.get("dueDate"),
-            "total": amounts.get("total"),
-            "balance": amounts.get("invoiceBalance"),
-            "client_name": client.get("name"),
-            "company_name": client.get("companyName"),
-            "is_recurring": is_recurring,
-            "job_titles": [j.get("title") for j in linked_jobs],
-            "jobber_web_uri": inv.get("jobberWebUri"),
-        })
-    out.sort(key=lambda i: i["issued_date"] or "", reverse=True)
-    return out
-
-
-def _search_clients_and_jobs(term: str) -> List[Dict[str, Any]]:
-    needle = term.strip().lower()
-    matches = []
-    for c in _all_clients_full():
-        props = _property_summaries(c)
-        job_titles = [j.get("title") or "" for j in (c.get("jobs") or {}).get("nodes", [])]
-        haystack = " ".join([
-            c.get("name") or "", c.get("companyName") or "",
-            *(p["name"] or "" for p in props),
-            *(p["address"] or "" for p in props),
-            *(f"{k} {v}" for p in props for k, v in p["custom_fields"].items()),
-            *job_titles,
-        ]).lower()
-        if needle not in haystack:
-            continue
-        matches.append({
-            "client_id": c["id"],
-            "client_name": c.get("name"),
-            "company_name": c.get("companyName"),
-            "archived": c.get("isArchived"),
-            "properties": props,
-            "jobs": _job_summaries(c, recurring_only=False, active_only=False),
-        })
-    return matches
-
-
-def _list_clients(active_only: bool = False) -> List[Dict[str, Any]]:
-    clients = paginate(CLIENTS_QUERY, ["clients"])
-    out = []
-    for c in clients:
-        if active_only and c.get("isArchived"):
-            continue
-        out.append({
-            "client_id": c["id"],
-            "name": c.get("name"),
-            "is_company": c.get("isCompany"),
-            "archived": c.get("isArchived"),
-            "created_at": c.get("createdAt"),
-            "emails": [e.get("address") for e in (c.get("emails") or [])],
-            "phones": [p.get("number") for p in (c.get("phones") or [])],
-        })
-    return out
-
-
-def _get_client(client_id: str) -> Dict[str, Any]:
-    return fetch_client_dashboard(client_id)
 
 
 TOOLS = [
@@ -355,11 +132,11 @@ TOOLS = [
 ]
 
 _DISPATCH = {
-    "list_recurring_jobs": lambda i: _list_recurring_jobs(**i),
-    "list_invoices": lambda i: _list_invoices(**i),
-    "search_clients_and_jobs": lambda i: _search_clients_and_jobs(**i),
-    "get_client": lambda i: _get_client(**i),
-    "list_clients": lambda i: _list_clients(**i),
+    "list_recurring_jobs": lambda i: lookups.list_recurring_jobs(**i),
+    "list_invoices": lambda i: lookups.list_invoices(**i),
+    "search_clients_and_jobs": lambda i: lookups.search_clients_and_jobs(**i),
+    "get_client": lambda i: lookups.get_client(**i),
+    "list_clients": lambda i: lookups.list_clients(**i),
 }
 
 _MAX_TOOL_ROUNDS = 6
@@ -367,7 +144,7 @@ _MAX_RESULT_CHARS = 40_000  # guards the model's context, not a security boundar
 
 
 def _system_prompt() -> str:
-    today = datetime.now(_BUSINESS_TZ).date().isoformat()
+    today = datetime.now(lookups.BUSINESS_TZ).date().isoformat()
     return (
         "You are Kook -- that's the nickname WeSpeakWiFi's owner uses for the "
         "Claude-powered assistant that helps run this business, and staff "
