@@ -165,15 +165,69 @@ def invoice_status_summary_section(invoices: List[Dict[str, Any]]) -> Dict[str, 
     return {"counts": dict(counts), "totals": dict(totals)}
 
 
+def _is_yearly_recurring(job: Dict[str, Any]) -> bool:
+    # Jobber's API exposes no billing-interval field for a recurring job --
+    # "yearly" is inferred from the title, matching this account's own
+    # naming convention (every yearly-billed job seen so far has "Yearly"
+    # in its title: "WeSpeakWiFi Yearly Tech Support", "YouSpeakWiFi
+    # Yearly Support", "Yearly Monitoring Security Plan"). Revisit if
+    # Jobber ever exposes a real recurrence/interval field.
+    return "yearly" in (job.get("title") or "").lower()
+
+
+def _next_yearly_invoice_date(job: Dict[str, Any], all_recurring_jobs: List[Dict[str, Any]]) -> Optional[date]:
+    """
+    A yearly recurring job's next cycle is auto-scheduled by Jobber as a
+    separate job record dated roughly a year ahead, well before the
+    current cycle ends -- this is exactly why "active recurring" (see
+    build_monday_dashboard) has to exclude future-startAt jobs in the
+    first place. If that next-cycle job is already visible in the full
+    (unfiltered) recurring list, its startAt is the real next invoice
+    date; otherwise fall back to one year after this job's own startAt
+    as an estimate.
+    """
+    start = lookups.parse_date(job.get("start_at"))
+    if start is None:
+        return None
+    client_id = job.get("client_id")
+    title = job.get("title")
+    future_starts = []
+    for other in all_recurring_jobs:
+        if other.get("client_id") != client_id or other.get("title") != title:
+            continue
+        if other.get("job_id") == job.get("job_id"):
+            continue
+        other_start = lookups.parse_date(other.get("start_at"))
+        if other_start and other_start > start:
+            future_starts.append(other_start)
+    if future_starts:
+        return min(future_starts)
+    try:
+        return start.replace(year=start.year + 1)
+    except ValueError:
+        # start was Feb 29 and next year isn't a leap year
+        return start.replace(month=2, day=28, year=start.year + 1)
+
+
 def priority_actions_section(
     active_recurring_jobs: List[Dict[str, Any]],
+    all_recurring_jobs: List[Dict[str, Any]],
     billing_risk: Dict[str, Any],
     incomplete_jobs: Dict[str, Any],
+    reference_date: date,
 ) -> Dict[str, Any]:
     actions: List[Dict[str, Any]] = []
 
     for j in active_recurring_jobs:
         if j.get("autopay_enabled") is False:
+            # A yearly plan's autopay being off isn't urgent for the 11
+            # months nobody's about to be charged -- only surface it once
+            # the next invoice is within 6 days (confirmed live: flagged
+            # every week regardless of timing was pure noise for these).
+            if _is_yearly_recurring(j):
+                next_invoice = _next_yearly_invoice_date(j, all_recurring_jobs)
+                if next_invoice is not None and (next_invoice - reference_date).days > 6:
+                    continue
             actions.append({
                 "type": "autopay_disabled",
                 "client_name": j.get("client_name"),
@@ -294,7 +348,7 @@ def build_monday_dashboard(week_end: Optional[date] = None, weefee: Optional[Dic
         "week_start": week_start.isoformat(),
         "week_end": week_end.isoformat(),
         "generated_at": run_date.isoformat(),
-        "priority_actions": priority_actions_section(active_recurring, billing_risk, incomplete),
+        "priority_actions": priority_actions_section(active_recurring, all_recurring, billing_risk, incomplete, week_end),
         "monthly_recurring": monthly_recurring_section(active_recurring),
         "week_over_week": week_over_week_section(active_recurring, week_end),
         "billing_risk": billing_risk,
