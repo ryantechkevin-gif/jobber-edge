@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeSpeakWiFi — Monday Dashboard</title>
+<style>
+  :root {
+    --bg: #10141b; --surface: #1a2029; --surface-2: #222937; --border: #2b3341;
+    --text: #e9ecf1; --text-dim: #8b95a5; --text-faint: #5f6979;
+    --accent: #4dc2d4; --accent-soft: rgba(77, 194, 212, 0.14);
+    --good: #5fb87a; --good-soft: rgba(95, 184, 122, 0.14);
+    --warning: #e0a83e; --warning-soft: rgba(224, 168, 62, 0.14);
+    --critical: #e2645f; --critical-soft: rgba(226, 100, 95, 0.14);
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -12px rgba(0,0,0,0.5);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f3f5f7; --surface: #ffffff; --surface-2: #eceff3; --border: #dde2e8;
+      --text: #161b22; --text-dim: #596475; --text-faint: #8892a0;
+      --accent: #0e7f90; --accent-soft: rgba(14, 127, 144, 0.09);
+      --good: #2e8b52; --good-soft: rgba(46, 139, 82, 0.1);
+      --warning: #b5790f; --warning-soft: rgba(181, 121, 15, 0.1);
+      --critical: #c4433d; --critical-soft: rgba(196, 67, 61, 0.1);
+      --shadow: 0 1px 2px rgba(20,30,40,0.06), 0 8px 20px -12px rgba(20,30,40,0.12);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10141b; --surface: #1a2029; --surface-2: #222937; --border: #2b3341;
+    --text: #e9ecf1; --text-dim: #8b95a5; --text-faint: #5f6979;
+    --accent: #4dc2d4; --accent-soft: rgba(77, 194, 212, 0.14);
+    --good: #5fb87a; --good-soft: rgba(95, 184, 122, 0.14);
+    --warning: #e0a83e; --warning-soft: rgba(224, 168, 62, 0.14);
+    --critical: #e2645f; --critical-soft: rgba(226, 100, 95, 0.14);
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -12px rgba(0,0,0,0.5);
+  }
+  :root[data-theme="light"] {
+    --bg: #f3f5f7; --surface: #ffffff; --surface-2: #eceff3; --border: #dde2e8;
+    --text: #161b22; --text-dim: #596475; --text-faint: #8892a0;
+    --accent: #0e7f90; --accent-soft: rgba(14, 127, 144, 0.09);
+    --good: #2e8b52; --good-soft: rgba(46, 139, 82, 0.1);
+    --warning: #b5790f; --warning-soft: rgba(181, 121, 15, 0.1);
+    --critical: #c4433d; --critical-soft: rgba(196, 67, 61, 0.1);
+    --shadow: 0 1px 2px rgba(20,30,40,0.06), 0 8px 20px -12px rgba(20,30,40,0.12);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; line-height: 1.45;
+  }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-variant-numeric: tabular-nums; }
+  a { color: inherit; }
+
+  .topbar {
+    display: flex; align-items: center; gap: 14px; padding: 10px 20px;
+    border-bottom: 1px solid var(--border); background: var(--surface);
+  }
+  .topbar .logo-wrap { flex-shrink: 0; display: flex; align-items: center; background: #ffffff; padding: 6px 12px; border-radius: 8px; line-height: 0; }
+  .topbar .logo-wrap img { display: block; height: 26px; width: auto; }
+  .topbar .title { flex: 1; font-size: 13px; font-weight: 700; color: var(--text-dim); letter-spacing: 0.02em; }
+  .version-badge { flex-shrink: 0; font-size: 11px; color: var(--text-faint); white-space: nowrap; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); }
+
+  .page { max-width: 1080px; margin: 0 auto; padding: 28px 24px 64px; }
+
+  .placeholder { display: flex; align-items: center; justify-content: center; padding: 80px 24px; color: var(--text-faint); font-size: 14px; text-align: center; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+
+  .masthead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+  .identity .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-faint); margin: 0 0 8px; }
+  .identity h1 { font-size: 32px; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 6px; text-wrap: balance; }
+  .identity .subline { color: var(--text-dim); font-size: 14.5px; margin: 0 0 14px; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: var(--text-faint); }
+  .meta-row b { color: var(--text-dim); font-weight: 600; }
+
+  .week-form { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .week-form input { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font-size: 12.5px; font-family: inherit; }
+  .week-form input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .week-form button { padding: 7px 14px; border-radius: 8px; border: none; background: var(--accent); color: var(--bg); font-family: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+  .week-form button:hover { filter: brightness(1.08); }
+  .week-form button:disabled { opacity: 0.6; cursor: default; }
+
+  section.block { margin: 28px 0; }
+  h2 { font-size: 15px; font-weight: 700; letter-spacing: 0.01em; margin: 0 0 12px; }
+
+  .callout { display: flex; gap: 16px; align-items: flex-start; background: var(--warning-soft); border: 1px solid transparent; border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
+  .callout .figure { font-family: ui-monospace, monospace; font-weight: 700; font-size: 22px; color: var(--warning); white-space: nowrap; }
+  .callout p { margin: 0; font-size: 13.5px; color: var(--text); max-width: 56ch; }
+
+  .all-clear { display: flex; align-items: center; gap: 10px; background: var(--good-soft); border-radius: 12px; padding: 14px 18px; font-size: 13.5px; }
+  .all-clear .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex-shrink: 0; }
+
+  .action-list { display: flex; flex-direction: column; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .action-row { background: var(--surface); padding: 11px 16px; display: flex; align-items: center; gap: 14px; font-size: 13px; flex-wrap: wrap; }
+  .action-row .type-badge { font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; background: var(--warning-soft); color: var(--warning); white-space: nowrap; }
+  .action-row .who { font-weight: 700; flex-shrink: 0; min-width: 140px; }
+  .action-row .issue { color: var(--text-dim); flex: 1; min-width: 200px; }
+  .action-row .amt { font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  .action-row a { color: var(--accent); text-decoration: none; font-size: 12px; flex-shrink: 0; }
+  .action-row a:hover { text-decoration: underline; }
+
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .stat { background: var(--surface); padding: 16px 18px; }
+  .stat .stat-label { font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-faint); margin: 0 0 8px; }
+  .stat .stat-value { font-size: 21px; font-weight: 800; }
+  .stat .stat-value.warning { color: var(--warning); }
+  .stat .stat-sub { font-size: 11.5px; color: var(--text-faint); margin-top: 4px; }
+
+  details.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  details.panel + details.panel { margin-top: 10px; }
+  details.panel summary { list-style: none; cursor: pointer; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 700; font-size: 13.5px; }
+  details.panel summary::-webkit-details-marker { display: none; }
+  details.panel summary .chev { font-size: 11px; color: var(--text-faint); transition: transform 0.15s; }
+  details.panel[open] summary .chev { transform: rotate(90deg); }
+  details.panel summary .count-note { font-size: 11.5px; color: var(--text-faint); font-weight: 500; }
+  .panel-body { border-top: 1px solid var(--border); padding: 0 18px 16px; }
+  .panel-body.pad { padding: 14px 18px; font-size: 13px; color: var(--text-dim); }
+
+  .table-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px 0 0; }
+  .table-controls input { flex: 1; min-width: 220px; padding: 7px 11px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font-size: 13px; font-family: inherit; }
+  .table-controls input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .table-controls .count { font-size: 11.5px; color: var(--text-faint); white-space: nowrap; }
+
+  .table-scroll { overflow-x: auto; padding: 10px 0 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 600px; }
+  table th { text-align: left; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-faint); padding: 6px 14px; white-space: nowrap; cursor: pointer; user-select: none; }
+  table th:hover { color: var(--text); }
+  table th.sorted { color: var(--accent); }
+  table th .arrow { font-size: 9px; margin-left: 3px; }
+  table td { padding: 7px 14px; border-top: 1px solid var(--border); vertical-align: top; }
+  table tbody tr:hover td { background: var(--accent-soft); }
+  .client-cell .name { font-weight: 700; }
+  .client-cell .company { display: block; font-size: 11px; color: var(--text-faint); margin-top: 1px; }
+  .amount { font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  table a { color: var(--accent); text-decoration: none; font-size: 11.5px; white-space: nowrap; }
+  table a:hover { text-decoration: underline; }
+  .pill { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
+  .pill.st-good { background: var(--good-soft); color: var(--good); }
+  .pill.st-neutral { background: var(--surface-2); color: var(--text-faint); }
+  .pill.st-accent { background: var(--accent-soft); color: var(--accent); }
+  .pill.st-warning { background: var(--warning-soft); color: var(--warning); }
+
+  .weefee-link { display: inline-flex; align-items: center; gap: 8px; padding: 12px 16px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); text-decoration: none; font-weight: 700; font-size: 13.5px; }
+  .weefee-link:hover { filter: brightness(1.08); }
+
+  footer.source-note { margin-top: 32px; font-size: 12px; color: var(--text-faint); text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo-wrap"><img src="https://d13cw1lxlociqy.cloudfront.net/ajwwcxezl2346z4rhdbf8xzvv3tq" alt="WeSpeakWiFi" width="120"></div>
+  <div class="title">Monday Dashboard</div>
+  <span class="version-badge" title="Last deployed, Arizona time">{{BUILD_STAMP}}</span>
+</div>
+
+<div class="page">
+  <div id="content"><div class="placeholder"><span class="spinner"></span>Loading dashboard…</div></div>
+</div>
+
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var CODE = params.get('code') || '';
+  var qs = CODE ? ('?code=' + encodeURIComponent(CODE)) : '';
+  var weekEndParam = params.get('week_end') || '';
+
+  var WEEFEE_URL = 'https://secure.getjobber.com/ai_receptionist/dashboard?order=DESCENDING&page=1&pageSize=10&sort=TIMESTAMP';
+
+  var NORMAL_STATUSES = { active: 1, action_required: 1, late: 1, today: 1, on_hold: 1, unscheduled: 1, expiring_within_30_days: 1, requires_invoicing: 1 };
+
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = (s === null || s === undefined) ? '' : String(s);
+    return d.innerHTML;
+  }
+  function fmtMoney(n) {
+    if (n === null || n === undefined) return '—';
+    return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso).slice(0, 10);
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+  function statusPillClass(status) {
+    var s = (status || '').toLowerCase();
+    if (s === 'archived') return 'st-neutral';
+    if (NORMAL_STATUSES[s]) return 'st-good';
+    return 'st-accent';
+  }
+  function statusLabel(status) {
+    if (!status) return 'Unknown';
+    return status.replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
+
+  function fetchDashboard(weekEnd) {
+    var url = '/api/jobber/monday-dashboard' + qs + (weekEnd ? (qs ? '&' : '?') + 'week_end=' + encodeURIComponent(weekEnd) : '');
+    document.getElementById('content').innerHTML = '<div class="placeholder"><span class="spinner"></span>Loading dashboard…</div>';
+    fetch(url).then(function (r) {
+      if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
+      return r.json();
+    }).then(function (data) {
+      render(data);
+    }).catch(function (err) {
+      document.getElementById('content').innerHTML = '<div class="placeholder">Couldn\'t load the dashboard.<br><span class="mono" style="font-size:12px;">' + esc(err.message).slice(0, 400) + '</span></div>';
+    });
+  }
+
+  function render(d) {
+    var html = '';
+
+    html += '<div class="masthead">';
+    html += '  <div class="identity">';
+    html += '    <p class="eyebrow">WeSpeakWiFi · Live from Jobber</p>';
+    html += '    <h1>Monday Dashboard</h1>';
+    html += '    <p class="subline">Provided by Kook and its Designer — pulled directly from the Jobber API.</p>';
+    html += '    <div class="meta-row">';
+    html += '      <span><b>Week</b> ' + esc(d.week_start) + ' to ' + esc(d.week_end) + '</span>';
+    html += '      <span><b>Generated</b> ' + esc(d.generated_at) + '</span>';
+    html += '    </div>';
+    html += '  </div>';
+    html += '  <form class="week-form" id="weekForm">';
+    html += '    <input type="date" id="weekEndInput" value="' + esc(d.week_end) + '">';
+    html += '    <button type="submit">Load week</button>';
+    html += '  </form>';
+    html += '</div>';
+
+    html += renderPriorityActions(d.priority_actions);
+    html += renderStatRow(d);
+    html += renderBillingRisk(d.billing_risk);
+    html += renderDetailPanels(d);
+    html += renderWeeFee();
+
+    html += '<footer class="source-note">Live from Jobber via jobber-edge · week ending ' + esc(d.week_end) + '</footer>';
+
+    document.getElementById('content').innerHTML = html;
+    wireInteractivity(d);
+  }
+
+  function renderPriorityActions(pa) {
+    var actions = (pa && pa.actions) || [];
+    var uninvoicedTotal = actions.filter(function (a) { return a.type === 'incomplete_job_uninvoiced'; })
+      .reduce(function (sum, a) { return sum + (a.amount || 0); }, 0);
+    var out = '<section class="block"><h2>Priority actions</h2>';
+    if (!actions.length) {
+      out += '<div class="all-clear"><span class="dot"></span> Nothing needs attention this week.</div>';
+      return out + '</section>';
+    }
+    if (uninvoicedTotal > 0) {
+      out += '<div class="callout"><div class="figure">' + fmtMoney(uninvoicedTotal) + '</div>' +
+        '<p>Sitting uninvoiced on completed jobs, plus anything else below. These are the items that cost real money if left alone this week.</p></div>';
+    }
+    out += '<div class="action-list">' + actions.map(function (a) {
+      var badge = a.type === 'autopay_disabled' ? 'autopay' : a.type === 'past_due_invoice' ? 'past due' : 'uninvoiced';
+      return '<div class="action-row">' +
+        '<span class="type-badge">' + esc(badge) + '</span>' +
+        '<span class="who">' + esc(a.client_name || 'Unknown') + '</span>' +
+        '<span class="issue">' + esc(a.issue || '') + '</span>' +
+        '<span class="amt">' + fmtMoney(a.amount) + '</span>' +
+        (a.jobber_web_uri ? '<a href="' + esc(a.jobber_web_uri) + '" target="_blank" rel="noopener">Open ↗</a>' : '') +
+        '</div>';
+    }).join('') + '</div>';
+    return out + '</section>';
+  }
+
+  function renderStatRow(d) {
+    var mr = d.monthly_recurring || {}, pw = d.paid_this_week || {}, vw = d.visits_this_week || {};
+    var ij = d.incomplete_jobs || {}, nce = d.new_client_eval || {}, cr = d.closed_recurring || {};
+    function tile(label, value, sub, warn) {
+      return '<div class="stat"><p class="stat-label">' + esc(label) + '</p>' +
+        '<div class="stat-value' + (warn ? ' warning' : '') + '">' + value + '</div>' +
+        '<p class="stat-sub">' + esc(sub) + '</p></div>';
+    }
+    var out = '<section class="block"><h2>This week at a glance</h2><div class="stat-row">';
+    out += tile('Monthly recurring', fmtMoney(mr.mrr_total), (mr.job_count || 0) + ' jobs · ' + (mr.client_count || 0) + ' clients');
+    out += tile('Paid this week', fmtMoney(pw.collected_total), (pw.count || 0) + ' payments');
+    out += tile('Visits this week', String(vw.count || 0), 'all logged');
+    out += tile('Incomplete jobs', String(ij.count || 0), 'open one-off jobs', (ij.count || 0) > 0);
+    out += tile('New client eval', String(nce.count || 0), 'candidates flagged');
+    out += tile('Closed recurring', String(cr.count || 0), 'archived, in window');
+    out += '</div></section>';
+    return out;
+  }
+
+  function renderBillingRisk(br) {
+    br = br || {};
+    var out = '<section class="block"><h2>Billing risk</h2>';
+    if (!br.total_outstanding) {
+      out += '<div class="all-clear"><span class="dot"></span> No outstanding balances or past-due invoices right now — $0.00 across the board.</div>';
+      return out + '</section>';
+    }
+    out += '<div class="table-scroll"><table><thead><tr><th>Client</th><th>Balance</th><th># Invoices</th></tr></thead><tbody>';
+    out += (br.clients_with_real_balance || []).map(function (c) {
+      return '<tr><td>' + esc(c.client_name) + '</td><td class="amount">' + fmtMoney(c.total_balance) + '</td><td>' + (c.invoices || []).length + '</td></tr>';
+    }).join('');
+    out += '</tbody></table></div>';
+    if (br.ghost_balance_total) {
+      out += '<p style="font-size:12.5px;color:var(--text-faint);margin-top:8px;">Plus ' + fmtMoney(br.ghost_balance_total) + ' across ' + br.ghost_balance_invoice_count + ' invoice(s) marked paid but still showing a balance — a bookkeeping cleanup item, not real outstanding risk.</p>';
+    }
+    return out + '</section>';
+  }
+
+  function jobRowsTable(jobs, idPrefix) {
+    var out = '<div class="table-controls"><input type="text" id="' + idPrefix + 'Search" placeholder="Filter by client, company, or job title…" autocomplete="off">' +
+      '<span class="count" id="' + idPrefix + 'Count"></span></div>';
+    out += '<div class="table-scroll"><table id="' + idPrefix + 'Table"><thead><tr>' +
+      '<th data-key="client" data-type="str">Client<span class="arrow"></span></th>' +
+      '<th data-key="job_number" data-type="num">Job #<span class="arrow"></span></th>' +
+      '<th data-key="title" data-type="str">Title<span class="arrow"></span></th>' +
+      '<th data-key="job_status" data-type="str">Status<span class="arrow"></span></th>' +
+      '<th data-key="monthly_total" data-type="num">Monthly $<span class="arrow"></span></th>' +
+      '<th data-key="start_at" data-type="str">Started<span class="arrow"></span></th>' +
+      '<th>Link</th></tr></thead><tbody id="' + idPrefix + 'Body"></tbody></table></div>';
+    return out;
+  }
+
+  function renderDetailPanels(d) {
+    var mr = d.monthly_recurring || {}, pw = d.paid_this_week || {}, vw = d.visits_this_week || {};
+    var ij = d.incomplete_jobs || {}, nce = d.new_client_eval || {}, cr = d.closed_recurring || {}, inv = d.invoice_status_summary || {};
+
+    var out = '<section class="block"><h2>Detail</h2>';
+
+    out += '<details class="panel" open><summary>Monthly recurring jobs <span class="count-note">' + (mr.job_count || 0) + '</span><span class="chev">▶</span></summary>' +
+      '<div class="panel-body">' + jobRowsTable(mr.jobs || [], 'mr') + '</div></details>';
+
+    out += '<details class="panel"><summary>Paid this week <span class="count-note">' + (pw.count || 0) + '</span><span class="chev">▶</span></summary>' +
+      '<div class="panel-body"><div class="table-scroll"><table><thead><tr><th>Invoice</th><th>Client</th><th>Amount</th><th>Marked paid</th><th>Link</th></tr></thead><tbody>' +
+      (pw.payments || []).map(function (p) {
+        return '<tr><td class="mono">#' + esc(p.invoice_number) + '</td><td>' + esc(p.client_name) + '</td><td class="amount">' + fmtMoney(p.amount) + '</td><td>' + fmtDate(p.marked_paid) + '</td>' +
+          '<td>' + (p.jobber_web_uri ? '<a href="' + esc(p.jobber_web_uri) + '" target="_blank" rel="noopener">Open ↗</a>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table></div></div></details>';
+
+    out += '<details class="panel"><summary>Visits this week <span class="count-note">' + (vw.count || 0) + '</span><span class="chev">▶</span></summary>' +
+      '<div class="panel-body"><div class="table-scroll"><table><thead><tr><th>Job</th><th>Client</th><th>Start</th><th>Assigned to</th></tr></thead><tbody>' +
+      (vw.visits || []).map(function (v) {
+        return '<tr><td>' + esc(v.job_title || v.title) + '</td><td>' + esc(v.client_name) + '</td><td>' + fmtDate(v.start_at) + '</td><td>' + esc((v.assigned_to || []).join(', ')) + '</td></tr>';
+      }).join('') + '</tbody></table></div></div></details>';
+
+    out += '<details class="panel"><summary>Incomplete jobs <span class="count-note">' + (ij.count || 0) + '</span><span class="chev">▶</span></summary>' +
+      '<div class="panel-body"><div class="table-scroll"><table><thead><tr><th>Client</th><th>Job</th><th>Uninvoiced</th><th>Link</th></tr></thead><tbody>' +
+      (ij.jobs || []).map(function (j) {
+        return '<tr><td>' + esc(j.client_name) + '</td><td>' + esc(j.title || 'Untitled') + '</td><td class="amount">' + fmtMoney(j.uninvoiced_total) + '</td>' +
+          '<td>' + (j.jobber_web_uri ? '<a href="' + esc(j.jobber_web_uri) + '" target="_blank" rel="noopener">Open ↗</a>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table></div></div></details>';
+
+    out += '<details class="panel"><summary>New client evaluation candidates <span class="count-note">' + (nce.count || 0) + '</span><span class="chev">▶</span></summary>' +
+      '<div class="panel-body"><div class="table-scroll"><table><thead><tr><th>Client</th><th>Total paid</th></tr></thead><tbody>' +
+      (nce.clients || []).map(function (c) {
+        return '<tr><td>' + esc(c.client_name) + (c.company_name ? '<br><span style="font-size:11px;color:var(--text-faint);">' + esc(c.company_name) + '</span>' : '') + '</td><td class="amount">' + fmtMoney(c.total_paid) + '</td></tr>';
+      }).join('') + '</tbody></table></div></div></details>';
+
+    out += '<details class="panel"><summary>Closed recurring jobs <span class="count-note">' + (cr.count || 0) + '</span><span class="chev">▶</span></summary>' +
+      '<div class="panel-body">' + jobRowsTable(cr.jobs || [], 'cr') + '</div></details>';
+
+    out += '<details class="panel"><summary>Invoice history (window on file) <span class="chev">▶</span></summary>' +
+      '<div class="panel-body pad">' + Object.keys(inv.counts || {}).map(function (k) {
+        return esc(k) + ': ' + inv.counts[k] + ' invoices, ' + fmtMoney((inv.totals || {})[k]);
+      }).join(' · ') + '</div></details>';
+
+    out += '</section>';
+    return out;
+  }
+
+  function renderWeeFee() {
+    return '<section class="block"><h2>WeeFee / Receptionist</h2>' +
+      '<a class="weefee-link" href="' + WEEFEE_URL + '" target="_blank" rel="noopener">Click to visit the WeeFee Dashboard HERE →</a>' +
+      '</section>';
+  }
+
+  function wireInteractivity(d) {
+    document.getElementById('weekForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var val = document.getElementById('weekEndInput').value;
+      if (val) fetchDashboard(val);
+    });
+
+    wireJobTable('mr', d.monthly_recurring && d.monthly_recurring.jobs || []);
+    wireJobTable('cr', d.closed_recurring && d.closed_recurring.jobs || []);
+  }
+
+  function wireJobTable(prefix, jobs) {
+    var sortKey = 'client_name', sortDir = 1;
+    var searchInput = document.getElementById(prefix + 'Search');
+    var body = document.getElementById(prefix + 'Body');
+    var countEl = document.getElementById(prefix + 'Count');
+    var table = document.getElementById(prefix + 'Table');
+
+    function draw() {
+      var q = (searchInput.value || '').trim().toLowerCase();
+      var rows = jobs.filter(function (j) {
+        return !q || ((j.client_name || '') + ' ' + (j.company_name || '') + ' ' + (j.title || '')).toLowerCase().indexOf(q) !== -1;
+      });
+      rows.sort(function (a, b) {
+        var av = a[sortKey], bv = b[sortKey];
+        if (typeof av === 'string') { av = (av || '').toLowerCase(); bv = (bv || '').toLowerCase(); }
+        av = av === null || av === undefined ? '' : av;
+        bv = bv === null || bv === undefined ? '' : bv;
+        if (av < bv) return -1 * sortDir;
+        if (av > bv) return 1 * sortDir;
+        return 0;
+      });
+      body.innerHTML = rows.map(function (j) {
+        var flagged = j.job_status && !NORMAL_STATUSES[(j.job_status || '').toLowerCase()];
+        return '<tr>' +
+          '<td class="client-cell"><span class="name">' + esc(j.client_name) + '</span>' + (j.company_name ? '<span class="company">' + esc(j.company_name) + '</span>' : '') + '</td>' +
+          '<td class="mono">#' + esc(j.job_number) + '</td>' +
+          '<td>' + esc(j.title || 'Untitled') + '</td>' +
+          '<td><span class="pill ' + statusPillClass(j.job_status) + '">' + esc(statusLabel(j.job_status)) + '</span></td>' +
+          '<td class="amount">' + fmtMoney(j.monthly_total) + '</td>' +
+          '<td class="mono">' + fmtDate(j.start_at) + '</td>' +
+          '<td>' + (j.jobber_web_uri ? '<a href="' + esc(j.jobber_web_uri) + '" target="_blank" rel="noopener">Open ↗</a>' : '') + '</td>' +
+          '</tr>';
+      }).join('');
+      countEl.textContent = rows.length + ' of ' + jobs.length;
+    }
+
+    searchInput.addEventListener('input', draw);
+    Array.prototype.forEach.call(table.querySelectorAll('thead th[data-key]'), function (th) {
+      th.addEventListener('click', function () {
+        var key = th.getAttribute('data-key');
+        if (sortKey === key) { sortDir *= -1; } else { sortKey = key; sortDir = 1; }
+        Array.prototype.forEach.call(table.querySelectorAll('thead th'), function (h) {
+          h.classList.remove('sorted');
+          var a = h.querySelector('.arrow'); if (a) a.textContent = '';
+        });
+        th.classList.add('sorted');
+        th.querySelector('.arrow').textContent = sortDir === 1 ? '↑' : '↓';
+        draw();
+      });
+    });
+    draw();
+  }
+
+  fetchDashboard(weekEndParam);
+})();
+</script>
+</body>
+</html>

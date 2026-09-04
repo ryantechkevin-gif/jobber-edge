@@ -43,6 +43,26 @@ def dashboard_http(req: func.HttpRequest) -> func.HttpResponse:
     return func.HttpResponse(html, mimetype="text/html; charset=utf-8")
 
 
+# The browsable Monday Dashboard -- a live-rendered view of
+# build_monday_dashboard() fetched client-side from
+# /api/jobber/monday-dashboard, same "code" query param reused for that
+# call as dashboard_http does. This is the actual page people are meant
+# to open Monday morning; the Teams message (posted by the timer below)
+# is a summary, not a replacement for it. Accepts an optional
+# ?week_end=YYYY-MM-DD to load a different week, same as the JSON route.
+@app.route(route="monday-dashboard", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
+def monday_dashboard_http(req: func.HttpRequest) -> func.HttpResponse:
+    page_path = os.path.join(_STATIC_DIR, "monday_dashboard.html")
+    with open(page_path, "r", encoding="utf-8") as f:
+        html = f.read()
+
+    deployed_at = datetime.fromtimestamp(os.path.getmtime(page_path), tz=ZoneInfo("America/Phoenix"))
+    build_stamp = deployed_at.strftime("Deployed %b %d, %Y · %-I:%M %p MST")
+    html = html.replace("{{BUILD_STAMP}}", build_stamp)
+
+    return func.HttpResponse(html, mimetype="text/html; charset=utf-8")
+
+
 # One-time (or re-authorization) step: hit this with the function key to
 # start Jobber's OAuth consent screen. Requires the function key since it
 # kicks off a real authorization flow against the live WeSpeakWiFi Jobber
